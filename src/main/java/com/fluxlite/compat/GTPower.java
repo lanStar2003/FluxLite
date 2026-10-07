@@ -13,10 +13,12 @@ import gregtech.api.graphs.paths.NodePath;
 import gregtech.api.graphs.paths.PowerNodePath;
 import gregtech.api.metatileentity.BaseMetaPipeEntity;
 import gregtech.api.metatileentity.BaseMetaTileEntity;
+import gregtech.api.metatileentity.MetaTileEntity;
 
 /**
- * What GT's own energy code decides but does not expose: how many packets a machine still takes this tick, and how
- * close a cable is to burning. Read by reflection; when a field is missing the answers fall back to safe guesses.
+ * What GT's own energy code decides but does not expose: how many packets a machine still takes this tick, whether a
+ * generator got its energy out, and how close a cable is to burning. Read by reflection; when a field is missing the
+ * answers fall back to safe guesses.
  * <p>
  * A machine takes at most its amperage between two of its own ticks ({@code mAcceptedAmperes}). A cable path keeps a
  * leaky bucket of amperes ({@code mAmps}, drained by its rating every tick) and burns once it holds more than 40 ticks
@@ -31,6 +33,9 @@ public final class GTPower {
     private static final Field PATH_AMPS = field(PowerNodePath.class, "mAmps");
     private static final Field PATH_MAX = field(PowerNodePath.class, "mMaxAmps");
     private static final Field PATH_TICK = field(PowerNodePath.class, "mTick");
+    /** EU sent out in each of the last five ticks, and the slot of the latest. */
+    private static final Field OUT_LOG = field(BaseMetaTileEntity.class, "mAverageEUOutput");
+    private static final Field OUT_AT = field(BaseMetaTileEntity.class, "mAverageEUOutputIndex");
 
     private GTPower() {}
 
@@ -79,6 +84,43 @@ public final class GTPower {
     public static boolean low(BaseMetaTileEntity bm) {
         long cap = bm.getEUCapacity();
         return cap > 0 && bm.getStoredEU() * 2 < cap;
+    }
+
+    /**
+     * A generator (or battery) with a full set of packets ready that did not send them all in its last tick: neither
+     * the machines nor the connector took them. GT stops burning fuel once a generator cannot get its energy out.
+     * Also true for one tick after a generator refuelled following an empty output, hence {@code FeedGovernor} waits
+     * for two ticks in a row.
+     */
+    public static boolean heldBack(BaseMetaTileEntity bm) {
+        if (bm.isInvalid()) return false;
+        long v = bm.getOutputVoltage(), a = bm.getOutputAmperage();
+        if (v <= 0 || a <= 0) return false;
+        long min = bm.getMetaTileEntity() instanceof MetaTileEntity m ? m.getMinimumStoredEU() : 0;
+        return heldBack(lastOutput(bm), bm.getStoredEU() - min, v, a);
+    }
+
+    static boolean heldBack(long lastOut, long ready, long voltage, long amps) {
+        if (voltage <= 0 || amps <= 0) return false;
+        long full = voltage > Long.MAX_VALUE / amps ? Long.MAX_VALUE : voltage * amps;
+        return lastOut < full && ready >= full;
+    }
+
+    /** EU the device sent out in its latest tick (GT's average over the four before when that is unreadable). */
+    private static long lastOutput(BaseMetaTileEntity bm) {
+        if (OUT_LOG != null && OUT_AT != null) {
+            try {
+                long[] log = (long[]) OUT_LOG.get(bm);
+                int at = OUT_AT.getInt(bm);
+                if (at >= 0 && at < log.length) return log[at];
+            } catch (Throwable ignored) {}
+        }
+        return bm.getAverageElectricOutput();
+    }
+
+    /** True when a generator's latest output can be read, not just GT's four-tick average. */
+    public static boolean canReadOutput() {
+        return OUT_LOG != null && OUT_AT != null;
     }
 
     /** Every power path the cables belong to, once each. */
