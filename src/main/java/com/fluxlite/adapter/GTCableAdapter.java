@@ -12,8 +12,10 @@ import com.fluxlite.Config;
 import com.fluxlite.compat.GTPower;
 import com.fluxlite.compat.GTSinks;
 import com.fluxlite.core.CableScanner;
+import com.fluxlite.core.FeedGovernor;
 import com.fluxlite.core.MachineSample;
 import com.fluxlite.core.PortRole;
+import com.fluxlite.core.ServerEvents;
 import com.fluxlite.tile.TileConnector;
 import com.fluxlite.util.Names;
 
@@ -38,9 +40,11 @@ import ic2.api.energy.tile.IEnergySink;
  * <p>
  * A cable with machines and generators (or batteries) on it is both fed and drained, but never both at once, and its
  * generators come first: the connector only takes energy no machine on the cable can take right now (surplus), only
- * tops up machines that ran below half while the generators cannot keep up, and never charges the cable's batteries
- * (they would hand it straight back). A face that fed the cable this tick or the last refuses energy from it, and the
- * other way round.
+ * tops up machines that ran below half, and never charges the cable's batteries (they would hand it straight back). A
+ * face that fed the cable this tick or the last refuses energy from it, and the other way round. Topping up never
+ * takes a generator's place: the face sends no more than the demand, and as soon as a generator cannot get its energy
+ * out (the machines are full of the connector's packets, and the connector refuses its own cable's energy) the face
+ * pauses and learns a smaller share, see {@link FeedGovernor}.
  */
 public final class GTCableAdapter implements EnergyAdapter {
 
@@ -61,6 +65,11 @@ public final class GTCableAdapter implements EnergyAdapter {
     private Set<PowerNodePath> paths;
     private Node pathsOf;
     private boolean cooling;
+    /** The face's share next to the cable's generators; learnt again when the devices on the cable change. */
+    private FeedGovernor governor = new FeedGovernor();
+    /** Amperes the face may feed this tick, worked out with the demand. */
+    private long allowed;
+    private long allowedAt = Long.MIN_VALUE;
 
     public GTCableAdapter(BaseMetaPipeEntity pipe, TileConnector connector, ForgeDirection side) {
         this.pipe = pipe;
@@ -87,6 +96,7 @@ public final class GTCableAdapter implements EnergyAdapter {
         if (sig != signature) {
             signature = sig;
             topologyChanged = true;
+            governor = new FeedGovernor();
         }
     }
 
@@ -145,18 +155,36 @@ public final class GTCableAdapter implements EnergyAdapter {
      * snapshot, although the machine only takes one every few ticks, and the face would look under-supplied.
      * <p>
      * With generators or batteries on the cable only machines below half are counted (they keep the rest topped up),
-     * and batteries are left out when the face also takes energy from the cable.
+     * batteries are left out when the face also takes energy from the cable, and the face takes no more than its
+     * share next to the generators (see {@link FeedGovernor}). What it works out is also what {@link #inject} may
+     * send this tick.
      */
     private long currentDemand() {
+        long tick = ServerEvents.tick();
         long v = inputVoltage();
-        if (v <= 0) return 0;
+        if (v <= 0) return allow(tick, 0);
         boolean topUp = !scan.producers.isEmpty(), takesBack = role().collects();
         long amps = 0;
         for (CableScanner.Endpoint e : scan.consumers) {
             if (e.tile.isInvalid() || takesBack && e.producer) continue;
             amps = safeAdd(amps, packets(e, v, topUp));
         }
-        return safeMul(Math.min(amps, inputAmperage()), v);
+        amps = Math.min(amps, inputAmperage());
+        if (topUp) amps = governor.allow(tick, generatorsHeldBack(), amps);
+        return safeMul(allow(tick, amps), v);
+    }
+
+    private long allow(long tick, long amps) {
+        allowed = amps;
+        allowedAt = tick;
+        return amps;
+    }
+
+    /** A generator or battery on the cable could not get its energy out (see {@link GTPower#heldBack}). */
+    private boolean generatorsHeldBack() {
+        for (CableScanner.Endpoint e : scan.producers)
+            if (e.tile instanceof BaseMetaTileEntity bm && GTPower.heldBack(bm)) return true;
+        return false;
     }
 
     /** Packets of {@code v} the consumer takes now; with {@code topUp} only when it ran low. */
@@ -316,7 +344,10 @@ public final class GTCableAdapter implements EnergyAdapter {
     public long inject(long maxEU) {
         if (!hasInputSpec() || !isConnectedToUs()) return 0;
         long v = inputVoltage();
+        long tick = ServerEvents.tick();
         long amps = Math.min(inputAmperage(), maxEU / v);
+        // never more than the demand: GT would hand the rest to machines the generators are about to feed
+        if (allowedAt == tick) amps = Math.min(amps, allowed);
         if (amps <= 0) return 0;
         // a cable network nobody has powered yet has no node graph, and injecting into it would do nothing
         if (pipe.getNode() == null) {
@@ -325,8 +356,9 @@ public final class GTCableAdapter implements EnergyAdapter {
             } catch (Throwable ignored) {}
         }
         if (overheated()) return 0;
-        long used = pipe.injectEnergyUnits(face, v, amps);
-        return Math.max(0, Math.min(used, amps)) * v;
+        long used = Math.max(0, Math.min(pipe.injectEnergyUnits(face, v, amps), amps));
+        governor.fed(tick, used);
+        return used * v;
     }
 
     @Override
