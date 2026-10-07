@@ -17,12 +17,19 @@ import net.minecraft.network.play.server.S35PacketUpdateTileEntity;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.util.ForgeDirection;
+import net.minecraftforge.fluids.Fluid;
+import net.minecraftforge.fluids.FluidStack;
+import net.minecraftforge.fluids.FluidTankInfo;
+import net.minecraftforge.fluids.IFluidHandler;
 
+import com.fluxlite.Config;
 import com.fluxlite.FluxLite;
 import com.fluxlite.adapter.Adapters;
 import com.fluxlite.adapter.EnergyAdapter;
 import com.fluxlite.adapter.GTCableAdapter;
+import com.fluxlite.adapter.SteamAdapter;
 import com.fluxlite.backend.GTWirelessBackend;
+import com.fluxlite.backend.SteamNetwork;
 import com.fluxlite.chunk.ChunkLoadManager;
 import com.fluxlite.core.MachineSample;
 import com.fluxlite.core.Port;
@@ -51,8 +58,12 @@ import ic2.api.energy.tile.IEnergySource;
  * Flux connector. Every face connects by itself: generators and dynamo hatches feed the wireless network (input),
  * machines and energy hatches are fed from it (output), cables with both get both. Speaks GT EU directly, IC2 EU
  * through the IC2 energy net and RF through the CoFH API.
+ * <p>
+ * Each face also has a steam channel ({@code ports[6..11]}): boilers fill the team's steam network, steam machines are
+ * fed from it. Steam goes straight in and out of the network, through Forge's fluid interface.
  */
-public class TileConnector extends TileEntity implements IEnergyConnected, IEnergySink, IEnergySource, IEnergyHandler {
+public class TileConnector extends TileEntity
+    implements IEnergyConnected, IEnergySink, IEnergySource, IEnergyHandler, IFluidHandler {
 
     /** Client visual of a face: what the arm looks like. */
     public static final byte VIS_NONE = 0, VIS_IN = 1, VIS_OUT = 2, VIS_BOTH = 3, VIS_IDLE = 4, VIS_OFF = 5,
@@ -61,7 +72,8 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
     public UUID owner;
     public String ownerName = "";
     public long recordId;
-    public final Port[] ports = new Port[6];
+    /** 0-5: EU per face, 6-11: steam per face. */
+    public final Port[] ports = new Port[Port.COUNT];
     /** Name kept by a wrench-dismantled item; given to the record when the connector goes live. */
     public String pendingName;
 
@@ -84,7 +96,10 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
     public byte activeMask;
 
     public TileConnector() {
-        for (ForgeDirection d : ForgeDirection.VALID_DIRECTIONS) ports[d.ordinal()] = new Port(d);
+        for (ForgeDirection d : ForgeDirection.VALID_DIRECTIONS) {
+            ports[d.ordinal()] = new Port(d);
+            ports[d.ordinal() + 6] = new Port(d, true);
+        }
     }
 
     // ------------------------------------------------------------------ lifecycle
@@ -171,7 +186,7 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
         for (Port p : ports) {
             p.role = PortRole.NONE;
             p.status = PortStatus.DISABLED;
-            refreshCableGraph(p);
+            if (!p.steam) refreshCableGraph(p);
         }
     }
 
@@ -196,6 +211,7 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
     public void refundBuffers() {
         long supply = 0, collected = 0;
         for (Port p : ports) {
+            if (p.steam) continue;
             supply += Math.max(0, p.supply);
             collected += Math.max(0, p.collected);
             p.supply = p.collected = 0;
@@ -222,14 +238,17 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
 
     public void markNeighborChanged() {
         needsResolve = true;
-        for (Port p : ports) if (p.adapter instanceof GTCableAdapter c) c.invalidateScan();
+        for (Port p : ports) {
+            if (p.adapter instanceof GTCableAdapter c) c.invalidateScan();
+            else if (p.adapter instanceof SteamAdapter s) s.invalidateScan();
+        }
     }
 
-    /** The only setting of a face: on (automatic) or off. */
+    /** The only setting of a face: on (automatic) or off. Switches its EU and steam channel together. */
     public void toggleSide(int side) {
         if (side < 0 || side > 5) return;
-        Port p = ports[side];
-        p.mode = p.mode == PortMode.OFF ? PortMode.AUTO : PortMode.OFF;
+        PortMode next = ports[side].mode == PortMode.OFF ? PortMode.AUTO : PortMode.OFF;
+        ports[side].mode = ports[side + 6].mode = next;
         needsResolve = true;
         markDirty();
     }
@@ -237,8 +256,8 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
     // ------------------------------------------------------------------ per tick work
 
     private void commitTick(long now) {
-        long sumIn = 0, sumOut = 0, sumDemand = 0;
-        boolean anyActive = false;
+        long sumIn = 0, sumOut = 0, sumDemand = 0, steamIn = 0, steamOut = 0, steamDemand = 0;
+        boolean anyActive = false, steamActive = false;
         for (Port p : ports) {
             long out = p.tickOut - p.outDebt;
             if (out < 0) {
@@ -247,24 +266,38 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
             } else p.outDebt = 0;
             long in = Math.max(0, p.tickIn);
             boolean active = in > 0 || out > 0;
-            int s = p.side.ordinal();
+            int s = p.index;
             if (active || p.role != PortRole.NONE || record.portSeries[s] != null) {
                 record.portSeries(s)
                     .tick(in, out, p.tickDemand, active, now);
             }
-            sumIn += in;
-            sumOut += out;
-            sumDemand += p.tickDemand;
-            anyActive |= active;
+            if (p.steam) {
+                steamIn += in;
+                steamOut += out;
+                steamDemand += p.tickDemand;
+                steamActive |= active;
+            } else {
+                sumIn += in;
+                sumOut += out;
+                sumDemand += p.tickDemand;
+                anyActive |= active;
+            }
             p.tickIn = p.tickOut = p.tickDemand = 0;
         }
         record.total.tick(sumIn, sumOut, sumDemand, anyActive, now);
+        if (steamActive || record.steamTotal != null) record.steamTotal()
+            .tick(steamIn, steamOut, steamDemand, steamActive, now);
         ServerEvents.addTeamTick(team(), sumIn, sumOut, sumDemand, anyActive);
+        ServerEvents.addTeamSteamTick(team(), steamIn, steamOut, steamDemand, steamActive);
     }
 
     private void work(Port p) {
         EnergyAdapter a = p.adapter;
         if (a == null || !p.isWorking()) return;
+        if (p.steam) {
+            workSteam(p, a);
+            return;
+        }
         if (p.supplies() && !a.viaIc2()) {
             long demand = a.demand();
             p.tickDemand += demand;
@@ -297,6 +330,30 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
         }
     }
 
+    /** Steam goes straight from and to the team's steam network; whatever the device did not take goes back. */
+    private void workSteam(Port p, EnergyAdapter a) {
+        SteamNetwork net = SteamNetwork.get();
+        UUID team = team();
+        if (net == null || team == null) return;
+        if (p.supplies()) {
+            long demand = a.demand();
+            p.tickDemand += demand;
+            long got = demand > 0 ? net.take(team, demand) : 0;
+            if (got > 0) {
+                long used = Math.min(got, a.inject(got));
+                if (used < got) net.give(team, got - used);
+                p.tickOut += used;
+            }
+        }
+        if (p.collects()) {
+            long got = a.extract(Config.steamMaxPerTick);
+            if (got > 0) {
+                net.give(team, got);
+                p.tickIn += got;
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ face resolution
 
     public void resolvePorts() {
@@ -307,7 +364,7 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
             PortStatus oldStatus = p.status;
             resolve(p);
             if (p.role != oldRole || p.status != oldStatus) {
-                refreshCableGraph(p);
+                if (!p.steam) refreshCableGraph(p);
                 changed = true;
             }
         }
@@ -332,6 +389,10 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
         TileEntity te = worldObj.getTileEntity(nx, ny, nz);
         if (te instanceof TileConnector) {
             set(p, null, PortRole.NONE, PortStatus.CONNECTOR_NEIGHBOUR);
+            return;
+        }
+        if (p.steam) {
+            resolveSteam(p, te);
             return;
         }
         EnergyAdapter a = Adapters.matches(p.adapter, te) ? p.adapter : Adapters.create(this, side, te);
@@ -364,6 +425,22 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
             }
         }
         set(p, a, role, status);
+    }
+
+    private void resolveSteam(Port p, TileEntity te) {
+        EnergyAdapter a = SteamAdapter.matches(p.adapter, te) ? p.adapter : SteamAdapter.create(this, p.side, te);
+        if (a == null) {
+            set(p, null, PortRole.NONE, PortStatus.NO_TARGET);
+            return;
+        }
+        if (p.mode == PortMode.OFF) {
+            set(p, a, PortRole.NONE, PortStatus.DISABLED);
+            return;
+        }
+        a.refresh();
+        // a pipe with machines on it is fed, even when boilers push into it too
+        PortRole role = a.canReceive() ? PortRole.OUTPUT : a.canSend() ? PortRole.INPUT : PortRole.NONE;
+        set(p, a, role, role == PortRole.NONE ? PortStatus.NO_TARGET : PortStatus.OK);
     }
 
     private void set(Port p, EnergyAdapter a, PortRole role, PortStatus status) {
@@ -403,11 +480,25 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
         };
     }
 
+    /** What the arm of a face looks like: its EU and steam channel together. */
+    public byte faceVisual(int side) {
+        return combine(visualFor(ports[side]), visualFor(ports[side + 6]));
+    }
+
+    static byte combine(byte eu, byte steam) {
+        if (steam == VIS_NONE) return eu;
+        if (eu == VIS_NONE || eu == VIS_IDLE && steam != VIS_IDLE) return steam;
+        if (steam == VIS_IDLE || eu == VIS_OFF) return eu;
+        boolean in = eu == VIS_IN || eu == VIS_BOTH || steam == VIS_IN || steam == VIS_BOTH;
+        boolean out = eu == VIS_OUT || eu == VIS_BOTH || steam == VIS_OUT || steam == VIS_BOTH;
+        return in && out ? VIS_BOTH : in ? VIS_IN : out ? VIS_OUT : eu;
+    }
+
     private byte activeMaskNow() {
         byte mask = 0;
         if (record == null) return 0;
-        for (int i = 0; i < 6; i++) {
-            if (record.portSeries[i] != null && record.portSeries[i].window(1).activeTicks > 0) mask |= 1 << i;
+        for (int i = 0; i < Port.COUNT; i++) {
+            if (record.portSeries[i] != null && record.portSeries[i].window(1).activeTicks > 0) mask |= 1 << (i % 6);
         }
         return mask;
     }
@@ -417,7 +508,7 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
     private void syncVisual(boolean withActivity) {
         boolean dirty = false;
         for (int i = 0; i < 6; i++) {
-            byte v = visualFor(ports[i]);
+            byte v = faceVisual(i);
             if (v != sentVisual[i]) {
                 sentVisual[i] = v;
                 dirty = true;
@@ -438,7 +529,8 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
     private void rollSecond() {
         int day = ServerEvents.dayKey();
         record.total.rollSecond(day);
-        for (int i = 0; i < 6; i++) if (record.portSeries[i] != null) record.portSeries[i].rollSecond(day);
+        if (record.steamTotal != null) record.steamTotal.rollSecond(day);
+        for (int i = 0; i < Port.COUNT; i++) if (record.portSeries[i] != null) record.portSeries[i].rollSecond(day);
     }
 
     private void sampleMachines(long tick) {
@@ -484,7 +576,7 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
         r.online = live;
         r.lastSeen = System.currentTimeMillis();
         r.ownerName = ownerName;
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < Port.COUNT; i++) {
             Port p = ports[i];
             PortInfo info = r.ports[i];
             info.mode = p.mode;
@@ -496,6 +588,8 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
             info.collectAmperage = p.collectAmperage;
             info.target = p.targetName;
             info.cable = p.adapter != null && p.adapter.isCable();
+            info.devices = p.adapter != null ? p.adapter.deviceCount() : 0;
+            info.at = p.adapter != null ? p.adapter.devicePos() : null;
         }
     }
 
@@ -732,6 +826,58 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
             .min(Integer.MAX_VALUE, Math.max(p.supplyCap, p.collectCap) * Math.max(1, GregTechAPI.mEUtoRF) / 100);
     }
 
+    // ------------------------------------------------------------------ steam (Forge fluids)
+
+    private Port steamPort(ForgeDirection from) {
+        return from == null || from == ForgeDirection.UNKNOWN ? null : ports[from.ordinal() + 6];
+    }
+
+    /** Boilers and pipes push steam into input faces; it goes straight into the steam network. */
+    @Override
+    public int fill(ForgeDirection from, FluidStack resource, boolean doFill) {
+        if (!live || resource == null || resource.amount <= 0 || !SteamAdapter.isSteam(resource)) return 0;
+        Port p = steamPort(from);
+        if (p == null || !p.collects()) return 0;
+        SteamNetwork net = SteamNetwork.get();
+        UUID team = team();
+        if (net == null || team == null) return 0;
+        int take = Math.min(resource.amount, Config.steamMaxPerTick);
+        if (doFill) {
+            net.give(team, take);
+            p.tickIn += take;
+        }
+        return take;
+    }
+
+    @Override
+    public FluidStack drain(ForgeDirection from, FluidStack resource, boolean doDrain) {
+        return null;
+    }
+
+    @Override
+    public FluidStack drain(ForgeDirection from, int maxDrain, boolean doDrain) {
+        return null;
+    }
+
+    @Override
+    public boolean canFill(ForgeDirection from, Fluid fluid) {
+        Port p = steamPort(from);
+        return live && p != null && p.collects() && fluid != null && SteamAdapter.isSteam(new FluidStack(fluid, 1));
+    }
+
+    @Override
+    public boolean canDrain(ForgeDirection from, Fluid fluid) {
+        return false;
+    }
+
+    /** One (always empty) tank on every face that is switched on, so pipes connect to it. */
+    @Override
+    public FluidTankInfo[] getTankInfo(ForgeDirection from) {
+        Port p = steamPort(from);
+        if (!Config.steamEnabled || p == null || p.mode == PortMode.OFF) return new FluidTankInfo[0];
+        return new FluidTankInfo[] { new FluidTankInfo(null, Config.steamMaxPerTick) };
+    }
+
     // ------------------------------------------------------------------ NBT & client sync
 
     @Override
@@ -759,7 +905,9 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
         ownerName = t.getString("ownerName");
         recordId = t.getLong("record");
         NBTTagList l = t.getTagList("ports", 10);
-        for (int i = 0; i < Math.min(6, l.tagCount()); i++) ports[i].read(l.getCompoundTagAt(i));
+        for (int i = 0; i < Math.min(Port.COUNT, l.tagCount()); i++) ports[i].read(l.getCompoundTagAt(i));
+        // the switch is per face (saves from before steam only have the EU channels)
+        for (int i = 0; i < 6; i++) ports[i + 6].mode = ports[i].mode;
         needsResolve = true;
     }
 
@@ -767,7 +915,7 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
     public Packet getDescriptionPacket() {
         NBTTagCompound t = new NBTTagCompound();
         byte[] v = new byte[6];
-        for (int i = 0; i < 6; i++) v[i] = visualFor(ports[i]);
+        for (int i = 0; i < 6; i++) v[i] = faceVisual(i);
         t.setByteArray("v", v);
         t.setByte("a", activeMaskNow());
         return new S35PacketUpdateTileEntity(xCoord, yCoord, zCoord, 0, t);
@@ -784,7 +932,7 @@ public class TileConnector extends TileEntity implements IEnergyConnected, IEner
 
     /** Is there an arm towards this face? (server: live state, client: last synced visual) */
     public boolean hasArm(int side) {
-        if (worldObj != null && !worldObj.isRemote) return visualFor(ports[side]) != VIS_NONE;
+        if (worldObj != null && !worldObj.isRemote) return faceVisual(side) != VIS_NONE;
         return visual[side] != VIS_NONE;
     }
 }

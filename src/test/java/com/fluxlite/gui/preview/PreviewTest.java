@@ -80,6 +80,12 @@ class PreviewTest {
 
     // ------------------------------------------------------------------ sample data
 
+    private static NBTTagCompound steamFace(int side, byte vis, PortRole role, String target, long in, long out) {
+        NBTTagCompound f = face(side, vis, role, target, 0, in, out);
+        f.removeTag("v");
+        return f;
+    }
+
     private static NBTTagCompound face(int side, byte vis, PortRole role, String target, long v, long in, long out) {
         NBTTagCompound f = new NBTTagCompound();
         f.setByte("side", (byte) side);
@@ -101,14 +107,25 @@ class PreviewTest {
         t.setInteger("chunk", 1);
         t.setLong("in", 8_388_608);
         t.setLong("out", 2_097_152);
+        t.setLong("sin", 1_200);
+        t.setLong("sout", 640);
         NBTTagList l = new NBTTagList();
-        l.appendTag(face(0, TileConnector.VIS_NONE, PortRole.NONE, "", 0, 0, 0));
+        l.appendTag(face(0, TileConnector.VIS_IDLE, PortRole.NONE, "高压燃煤锅炉", 0, 0, 0));
         l.appendTag(face(1, TileConnector.VIS_OUT, PortRole.OUTPUT, "UV能源仓", 524_288, 0, 1_048_576));
         l.appendTag(face(2, TileConnector.VIS_IN, PortRole.INPUT, "UHV动力仓", 2_097_152, 8_388_608, 0));
-        l.appendTag(face(3, TileConnector.VIS_BOTH, PortRole.BOTH, "超导线缆 ×42", 524_288, 0, 1_048_576));
-        l.appendTag(face(4, TileConnector.VIS_OFF, PortRole.NONE, "LuV电池箱", 0, 0, 0));
+        l.appendTag(face(3, TileConnector.VIS_BOTH, PortRole.BOTH, "装配线 +5", 524_288, 0, 1_048_576));
+        l.appendTag(face(4, TileConnector.VIS_IN, PortRole.INPUT, "基础蒸汽涡轮", 32, 24, 0));
         l.appendTag(face(5, TileConnector.VIS_NONE, PortRole.NONE, "", 0, 0, 0));
         t.setTag("faces", l);
+        NBTTagList s = new NBTTagList();
+        s.appendTag(steamFace(0, TileConnector.VIS_IN, PortRole.INPUT, "高压燃煤锅炉", 1_200, 0));
+        s.appendTag(steamFace(1, TileConnector.VIS_NONE, PortRole.NONE, "", 0, 0));
+        s.appendTag(steamFace(2, TileConnector.VIS_NONE, PortRole.NONE, "", 0, 0));
+        s.appendTag(steamFace(3, TileConnector.VIS_NONE, PortRole.NONE, "", 0, 0));
+        s.appendTag(steamFace(4, TileConnector.VIS_OUT, PortRole.OUTPUT, "基础蒸汽涡轮", 0, 48));
+        s.appendTag(steamFace(5, TileConnector.VIS_NONE, PortRole.NONE, "", 0, 0));
+        t.setTag("steam", s);
+        t.setBoolean("hasSteam", true);
         return t;
     }
 
@@ -158,6 +175,10 @@ class PreviewTest {
         in.appendTag(top("大型燃气涡轮", 3_145_728));
         in.appendTag(top("太阳能阵列", 1_048_576));
         t.setTag("topIn", in);
+        t.setBoolean("steamOn", true);
+        t.setString("steam", "48200000");
+        t.setLong("sin", 3_600);
+        t.setLong("sout", 2_880);
         return t;
     }
 
@@ -195,7 +216,10 @@ class PreviewTest {
         NBTTagList l = new NBTTagList();
         l.appendTag(row("a", "聚变反应堆 MK3 动力仓", "聚变区", 1, 2_097_152, 8_388_608, 0, 8_388_608, "93422347665408", 0, 2, 0));
         l.appendTag(row("b", "大型化学反应釜 能源仓", "化工区", 2, 524_288, 0, 4_194_304, 4_194_304, "12093847562", 0, 5, 0));
-        l.appendTag(row("c", "超导线缆 ×42", "主基地", 3, 524_288, 1_048_576, 2_097_152, 3_145_728, "9384756201", 1, 1, 0));
+        l.appendTag(row("c", "装配线 +5", "主基地", 3, 524_288, 1_048_576, 2_097_152, 3_145_728, "9384756201", 1, 1, 0));
+        NBTTagCompound steam = row("k", "蒸汽粉碎机 ×3", "蒸汽车间", 2, 0, 0, 640, 960, "88123400", 3, 5, 0);
+        steam.setBoolean("stm", true);
+        l.appendTag(steam);
         l.appendTag(row("d", "装配线", "主基地", 2, 131_072, 0, 2_097_152, 2_097_152, "829384756", 2, 1, 0));
         l.appendTag(row("e", "大型燃气涡轮", "发电站", 1, 32_768, 3_145_728, 0, 3_145_728, "77665544332", 0, 4, 0));
         l.appendTag(row("f", "电弧炉阵列", "冶炼区", 2, 32_768, 0, 0, 1_048_576, "4433221100", 0, 3, 1));
@@ -204,6 +228,9 @@ class PreviewTest {
         l.appendTag(row("i", "LuV电池箱", "主基地", 0, 0, 0, 0, 0, "0", 0, 4, 3));
         l.appendTag(row("j", "量子箱", "电子区", 0, 0, 0, 0, 0, "0", 0, 0, 4));
         t.setTag("rows", l);
+        t.setBoolean("hasSteam", true);
+        t.setLong("sumSin", 3_600);
+        t.setLong("sumSout", 2_880);
         t.setInteger("count", 23);
         t.setInteger("all", 23);
         t.setInteger("offset", 0);
@@ -274,10 +301,20 @@ class PreviewTest {
             l.appendTag(new Alert(Alert.Type.UNDER_SUPPLY, 3, 2, "装配线 能源仓", "@L:fluxlite.side.2", "72%").write());
         } else t.setInteger("alerts", 0);
         t.setTag("alertList", l);
+        return t;
+    }
+
+    static NBTTagCompound settings(boolean hand) {
+        NBTTagCompound t = new NBTTagCompound();
+        common(t, 3);
+        t.setBoolean("hand", hand);
         t.setBoolean("chat", true);
+        if (hand) return t;
         t.setBoolean("redstone", false);
         t.setBoolean("ccOwner", true);
         t.setBoolean("holo", true);
+        t.setInteger("holoSize", 2);
+        t.setBoolean("holoOpaque", false);
         t.setBoolean("holoAllowed", true);
         return t;
     }
@@ -341,6 +378,23 @@ class PreviewTest {
             select(ok, 2);
             ok.onData(alerts(false));
             render(ok, "cc_alerts_ok_" + sz, w, h, s, -1, -1);
+
+            ControlCenterScreen set = new ControlCenterScreen(0, 0, 0, 0);
+            set.attach(host);
+            select(set, 3);
+            set.onData(settings(false));
+            render(set, "cc_settings_" + sz, w, h, s, -1, -1);
+
+            ControlCenterScreen hand = ControlCenterScreen.handheld();
+            hand.attach(host);
+            hand.onData(overview());
+            render(hand, "terminal_overview_" + sz, w, h, s, -1, -1);
+
+            ControlCenterScreen handSet = ControlCenterScreen.handheld();
+            handSet.attach(host);
+            select(handSet, 3);
+            handSet.onData(settings(true));
+            render(handSet, "terminal_settings_" + sz, w, h, s, -1, -1);
         }
     }
 

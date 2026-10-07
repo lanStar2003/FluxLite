@@ -17,6 +17,7 @@ public final class Config {
     private static final String CAT_RECIPES = "recipes";
     private static final String CAT_COMPAT = "compat";
     private static final String CAT_DISPLAY = "display";
+    private static final String CAT_STEAM = "steam";
 
     // general
     public static int settlementPeriod = 1;
@@ -48,9 +49,10 @@ public final class Config {
 
     // recipes
     public static boolean enableDefaultRecipes = true;
-    public static int connectorRecipeTier = 8;
-    public static int controlCenterRecipeTier = 6;
-    public static boolean connectorNeedsWirelessHatch = true;
+
+    // steam
+    public static boolean steamEnabled = true;
+    public static int steamMaxPerTick = 1_000_000;
 
     // display
     public static int hologramRange = 12;
@@ -186,27 +188,33 @@ public final class Config {
             86400,
             "Minimum seconds between two chat notifications of the same alert.");
 
-        enableDefaultRecipes = c
-            .getBoolean("enableDefaultRecipes", CAT_RECIPES, enableDefaultRecipes, "Register the built-in GT recipes.");
-        connectorRecipeTier = c.getInt(
-            "connectorTier",
+        enableDefaultRecipes = c.getBoolean(
+            "enableDefaultRecipes",
             CAT_RECIPES,
-            connectorRecipeTier,
+            enableDefaultRecipes,
+            "Register the built-in crafting table recipes (bronze, steam age). Set to false to use CraftTweaker scripts instead.");
+        // the assembler tiers of 0.4 are gone; drop them from old config files
+        if (c.hasCategory(CAT_RECIPES)) {
+            c.getCategory(CAT_RECIPES)
+                .remove("connectorTier");
+            c.getCategory(CAT_RECIPES)
+                .remove("controlCenterTier");
+            c.getCategory(CAT_RECIPES)
+                .remove("connectorNeedsWirelessHatch");
+        }
+
+        steamEnabled = c.getBoolean(
+            "enabled",
+            CAT_STEAM,
+            steamEnabled,
+            "Connectors also move steam: boilers fill the team's steam network, steam machines are fed from it.");
+        steamMaxPerTick = c.getInt(
+            "maxLitresPerTick",
+            CAT_STEAM,
+            steamMaxPerTick,
             1,
-            13,
-            "Voltage tier of the connector recipe (1=LV ... 8=UV, 9=UHV).");
-        controlCenterRecipeTier = c.getInt(
-            "controlCenterTier",
-            CAT_RECIPES,
-            controlCenterRecipeTier,
-            1,
-            13,
-            "Voltage tier of the control center recipe.");
-        connectorNeedsWirelessHatch = c.getBoolean(
-            "connectorNeedsWirelessHatch",
-            CAT_RECIPES,
-            connectorNeedsWirelessHatch,
-            "The connector recipe consumes a ULV wireless energy hatch, tying it to the wireless stage of the pack.");
+            Integer.MAX_VALUE,
+            "Litres of steam one connector face moves at most per tick.");
 
         rfNominalVoltage = c.getInt(
             "rfNominalVoltage",

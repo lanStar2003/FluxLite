@@ -24,11 +24,6 @@ import cpw.mods.fml.relauncher.SideOnly;
 @SideOnly(Side.CLIENT)
 public final class HologramRenderer extends TileEntitySpecialRenderer {
 
-    /** Blocks per panel unit. */
-    private static final float UNIT = 1 / 72f;
-    /** Gap between the top of the block and the bottom of the panel. */
-    private static final float LIFT = 0.45f;
-
     private static final HoloPanel.Tr TR = (key, args) -> args.length == 0 ? StatCollector.translateToLocal(key)
         : StatCollector.translateToLocalFormatted(key, args);
 
@@ -51,8 +46,10 @@ public final class HologramRenderer extends TileEntitySpecialRenderer {
         // the camera is at the origin; seen from behind the panel shows only its glass
         double rad = Math.toRadians(yaw);
         boolean back = Math.sin(rad) * -cx + Math.cos(rad) * -cz < 0;
-        float bob = (float) Math.sin(now / 900.0) * 0.03f;
-        float pw = HoloPanel.W * UNIT, ph = HoloPanel.H * UNIT;
+        // size and lift grow with the size the owner picked
+        float unit = cc.holoUnit(), lift = cc.holoLift();
+        float bob = (float) Math.sin(now / 900.0) * 0.03f * unit * 72;
+        float pw = HoloPanel.W * unit, ph = HoloPanel.H * unit;
 
         GL11.glPushMatrix();
         GL11.glPushAttrib(
@@ -72,12 +69,12 @@ public final class HologramRenderer extends TileEntitySpecialRenderer {
 
         GL11.glDisable(GL11.GL_TEXTURE_2D);
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
-        beam(s.open, LIFT + bob, pw * 0.5f - 0.12f);
+        beam(s.open, lift + bob, pw * 0.5f - 0.12f);
 
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GL11.glTranslatef(-pw / 2, LIFT + bob + ph, 0);
-        GL11.glScalef(UNIT, -UNIT, UNIT);
-        HoloPanel.draw(McCanvas.world(func_147498_b()), s, now, back, TR);
+        GL11.glTranslatef(-pw / 2, lift + bob + ph, 0);
+        GL11.glScalef(unit, -unit, unit);
+        HoloPanel.draw(McCanvas.world(func_147498_b()), s, now, back, cc.holoOpaque, TR);
 
         GL11.glShadeModel(GL11.GL_FLAT);
         GL11.glPopAttrib();

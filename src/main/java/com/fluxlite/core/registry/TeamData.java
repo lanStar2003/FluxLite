@@ -17,6 +17,8 @@ public final class TeamData {
 
     public final UUID leader;
     public Series series = new Series();
+    /** Steam moved by the team's connectors, in litres. */
+    public Series steamSeries = new Series();
     public boolean chatAlerts = true;
 
     // runtime
@@ -28,6 +30,7 @@ public final class TeamData {
     public TeamData(UUID leader) {
         this.leader = leader;
         series.keepTicks();
+        steamSeries.keepTicks();
     }
 
     public NBTTagCompound write() {
@@ -35,6 +38,7 @@ public final class TeamData {
         t.setLong("lm", leader.getMostSignificantBits());
         t.setLong("ll", leader.getLeastSignificantBits());
         t.setTag("s", series.write());
+        t.setTag("ss", steamSeries.write());
         t.setBoolean("chat", chatAlerts);
         return t;
     }
@@ -44,6 +48,10 @@ public final class TeamData {
         if (t.hasKey("s")) {
             d.series = Series.read(t.getCompoundTag("s"));
             d.series.keepTicks();
+        }
+        if (t.hasKey("ss")) {
+            d.steamSeries = Series.read(t.getCompoundTag("ss"));
+            d.steamSeries.keepTicks();
         }
         d.chatAlerts = !t.hasKey("chat") || t.getBoolean("chat");
         return d;

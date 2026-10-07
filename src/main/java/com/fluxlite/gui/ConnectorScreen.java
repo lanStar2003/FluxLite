@@ -1,5 +1,8 @@
 package com.fluxlite.gui;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 
@@ -14,7 +17,7 @@ import com.fluxlite.util.Fmt;
 
 /**
  * Connector card: name, live per-tick totals and the six faces. Directions are automatic; the only control is a
- * switch per face.
+ * switch per face. A face that moves both EU and steam (a steam turbine) gets a row for each.
  */
 public class ConnectorScreen extends UiScreen {
 
@@ -60,11 +63,44 @@ public class ConnectorScreen extends UiScreen {
         if (d.getBoolean("ok")) name.set(d.getString("name"));
     }
 
+    /** One line of the face list: a face's EU or steam channel. */
+    private static final class Row {
+
+        final NBTTagCompound face;
+        final boolean steam, first, lastOfFace;
+
+        Row(NBTTagCompound face, boolean steam, boolean first, boolean lastOfFace) {
+            this.face = face;
+            this.steam = steam;
+            this.first = first;
+            this.lastOfFace = lastOfFace;
+        }
+    }
+
+    /** EU and steam rows per face; an idle channel is left out when the other one has something to show. */
+    private List<Row> rows() {
+        NBTTagList faces = data.getTagList("faces", 10), steam = data.getTagList("steam", 10);
+        List<Row> rows = new ArrayList<>();
+        for (int i = 0; i < faces.tagCount(); i++) {
+            NBTTagCompound eu = faces.getCompoundTagAt(i);
+            NBTTagCompound st = i < steam.tagCount() ? steam.getCompoundTagAt(i) : null;
+            int ev = eu.getByte("vis"), sv = st == null ? TileConnector.VIS_NONE : st.getByte("vis");
+            boolean euShown = ev != TileConnector.VIS_NONE
+                && !(ev == TileConnector.VIS_IDLE && sv != TileConnector.VIS_NONE && sv != TileConnector.VIS_IDLE);
+            boolean stShown = sv != TileConnector.VIS_NONE && !(sv == TileConnector.VIS_IDLE && euShown);
+            if (euShown || !stShown) rows.add(new Row(eu, false, true, !stShown));
+            if (stShown) rows.add(new Row(st, true, !euShown, true));
+        }
+        return rows;
+    }
+
     @Override
     protected void render(Canvas c) {
         scrim(c);
-        int rows = 6;
-        float h = 12 + 30 + 10 + 40 + 10 + rows * ROW + 8 + 16;
+        List<Row> rows = data != null && data.getBoolean("ok") ? rows() : new ArrayList<>();
+        boolean steam = data != null && data.getBoolean("hasSteam");
+        int n = Math.max(6, rows.size());
+        float h = 12 + 30 + 10 + 40 + 10 + (steam ? 24 : 0) + n * ROW + 8 + 16;
         float x = (width - W) / 2f, y = (height - h) / 2f;
         window(c, x, y, W, h);
         closeButton(c, x + W - 14, y + 14);
@@ -88,16 +124,26 @@ public class ConnectorScreen extends UiScreen {
         float cy = y + 52, cw = (W - 24 - 8) / 2f;
         stat(c, x + 12, cy, cw, tr("fluxlite.gui.input"), data.getLong("in"), Theme.INPUT);
         stat(c, x + 12 + cw + 8, cy, cw, tr("fluxlite.gui.output"), data.getLong("out"), Theme.OUTPUT);
+        float ly = cy + 50;
+        if (steam) {
+            steamTotals(c, x + 12, ly, W - 24);
+            ly += 24;
+        }
 
         // faces
-        float ly = cy + 50;
         float lw = W - 24;
-        card(c, x + 12, ly, lw, rows * ROW);
-        NBTTagList faces = data.getTagList("faces", 10);
-        for (int i = 0; i < faces.tagCount(); i++) {
-            face(c, faces.getCompoundTagAt(i), x + 12, ly + i * ROW, lw, i < faces.tagCount() - 1);
+        card(c, x + 12, ly, lw, n * ROW);
+        for (int i = 0; i < rows.size(); i++) {
+            Row r = rows.get(i);
+            float ry = ly + i * ROW;
+            if (i < rows.size() - 1) {
+                // a full line between faces, a short one between the two channels of a face
+                float inset = r.lastOfFace ? 28 : 60;
+                c.fill(x + 12 + inset, ry + ROW - 0.5f, lw - inset, 0.5f, Theme.SEPARATOR);
+            }
+            face(c, r, x + 12, ry, lw);
         }
-        textCenter(c, tr("fluxlite.gui.connector_hint"), x + W / 2f, ly + rows * ROW + 7, Theme.LABEL3, 1);
+        textCenter(c, tr("fluxlite.gui.connector_hint"), x + W / 2f, ly + n * ROW + 7, Theme.LABEL3, 1);
     }
 
     private String chunkText(int state) {
@@ -126,11 +172,30 @@ public class ConnectorScreen extends UiScreen {
         value(c, Fmt.si(value), "EU/t", x + 9, y + 20, value > 0 ? Theme.LABEL : Theme.LABEL3, 2);
     }
 
-    private void face(Canvas c, NBTTagCompound f, float x, float y, float w, boolean separator) {
+    /** Steam in and out of this connector, one line. */
+    private void steamTotals(Canvas c, float x, float y, float w) {
+        card(c, x, y, w, 18);
+        cloud(c, x + 10, y + 9);
+        float tx = x + 18 + text(c, tr("fluxlite.gui.steam"), x + 18, y + 5, Theme.LABEL2) + 12;
+        long in = data.getLong("sin"), out = data.getLong("sout");
+        c.circle(tx + 2, y + 8.5f, 2, Theme.INPUT);
+        tx += 7 + text(c, Fmt.si(in) + " L/t", tx + 7, y + 5, in > 0 ? Theme.LABEL : Theme.LABEL3) + 12;
+        c.circle(tx + 2, y + 8.5f, 2, Theme.OUTPUT);
+        text(c, Fmt.si(out) + " L/t", tx + 7, y + 5, out > 0 ? Theme.LABEL : Theme.LABEL3);
+    }
+
+    /** Small steam cloud, centered on (x, y). */
+    static void cloud(Canvas c, float x, float y) {
+        c.circle(x - 2.6f, y + 0.8f, 2.1f, Theme.STEAM);
+        c.circle(x, y - 0.6f, 2.5f, Theme.STEAM);
+        c.circle(x + 2.4f, y + 1, 1.9f, Theme.STEAM);
+    }
+
+    private void face(Canvas c, Row r, float x, float y, float w) {
+        NBTTagCompound f = r.face;
         int side = f.getByte("side");
         int vis = f.getByte("vis");
-        if (separator) c.fill(x + 28, y + ROW - 0.5f, w - 28, 0.5f, Theme.SEPARATOR);
-        textCenter(
+        if (r.first) textCenter(
             c,
             tr("fluxlite.side." + side),
             x + 14,
@@ -144,21 +209,22 @@ public class ConnectorScreen extends UiScreen {
             return;
         }
         boolean off = vis == TileConnector.VIS_OFF;
-        // right side: switch, value, pill
+        // right side: switch (once per face), value, pill
         float right = x + w - 8;
-        toggle(c, right - 22, y + 3, !off, () -> edit(Kinds.OP_TOGGLE, side, null));
+        if (r.first) toggle(c, right - 22, y + 3, !off, () -> edit(Kinds.OP_TOGGLE, side, null));
         right -= 28;
         PortRole role = PortRole.byId(f.getByte("role"));
         String val = "";
         int valColor = Theme.LABEL2;
         if (!off && vis != TileConnector.VIS_IDLE && vis != TileConnector.VIS_ERROR) {
             long in = f.getLong("in"), out = f.getLong("out");
+            String unit = r.steam ? " L" : "";
             if (role == PortRole.BOTH) {
-                val = "+" + Fmt.si(in) + " −" + Fmt.si(out);
+                val = "+" + Fmt.si(in) + " −" + Fmt.si(out) + unit;
                 valColor = Theme.LABEL;
             } else {
                 long v = role == PortRole.INPUT ? in : out;
-                val = Fmt.si(v);
+                val = Fmt.si(v) + unit;
                 valColor = v > 0 ? Theme.LABEL : Theme.LABEL3;
             }
         }
@@ -169,11 +235,11 @@ public class ConnectorScreen extends UiScreen {
         int pc;
         switch (vis) {
             case TileConnector.VIS_IN -> {
-                pill = tr("fluxlite.role.input");
+                pill = tr(r.steam ? "fluxlite.role.steam_in" : "fluxlite.role.input");
                 pc = Theme.INPUT;
             }
             case TileConnector.VIS_OUT -> {
-                pill = tr("fluxlite.role.output");
+                pill = tr(r.steam ? "fluxlite.role.steam_out" : "fluxlite.role.output");
                 pc = Theme.OUTPUT;
             }
             case TileConnector.VIS_BOTH -> {
@@ -189,7 +255,7 @@ public class ConnectorScreen extends UiScreen {
                 pc = Theme.RED;
             }
             default -> {
-                pill = tr("fluxlite.role.none");
+                pill = tr(r.steam ? "fluxlite.role.steam_idle" : "fluxlite.role.none");
                 pc = Theme.GRAY;
             }
         }
@@ -197,8 +263,11 @@ public class ConnectorScreen extends UiScreen {
         pill(c, right - pw, y + 4, pill, pc);
         right -= pw + 6;
         String target = f.getString("target");
+        if (target.isEmpty()) target = tr(r.steam ? "fluxlite.gui.pipe_empty" : "fluxlite.gui.cable_empty");
         long v = f.getLong("v");
         if (v > 0) target += "  §8" + Fmt.tier(v);
-        text(c, fit(c, target, right - (x + 28)), x + 28, y + 6, off ? Theme.LABEL3 : Theme.LABEL2);
+        float tx = x + 28;
+        if (r.steam && !r.first) tx += 2;
+        text(c, fit(c, target, right - tx), tx, y + 6, off ? Theme.LABEL3 : Theme.LABEL2);
     }
 }

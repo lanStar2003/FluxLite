@@ -35,24 +35,36 @@ public final class ConnectorView {
         t.setInteger("chunk", chunk);
         t.setLong("in", r != null ? r.total.rateIn() : 0);
         t.setLong("out", r != null ? r.total.rateOut() : 0);
-        NBTTagList l = new NBTTagList();
-        for (int i = 0; i < 6; i++) {
+        if (r != null && r.steamTotal != null) {
+            t.setLong("sin", r.steamTotal.rateIn());
+            t.setLong("sout", r.steamTotal.rateOut());
+        }
+        // one entry per face for EU, then one per face for steam
+        NBTTagList l = new NBTTagList(), steam = new NBTTagList();
+        boolean anySteam = false;
+        for (int i = 0; i < Port.COUNT; i++) {
             Port p = c.ports[i];
             NBTTagCompound f = new NBTTagCompound();
-            f.setByte("side", (byte) i);
-            f.setByte("vis", c.visualFor(p));
+            f.setByte("side", (byte) (i % 6));
+            byte vis = c.visualFor(p);
+            f.setByte("vis", vis);
             f.setByte("role", (byte) p.role.ordinal());
             f.setByte("status", (byte) p.status.ordinal());
             f.setString("target", p.targetName == null ? "" : p.targetName);
-            f.setLong("v", p.role.supplies() ? p.supplyVoltage : p.collectVoltage);
+            if (!p.steam) f.setLong("v", p.role.supplies() ? p.supplyVoltage : p.collectVoltage);
             Series s = r != null ? r.portSeries[i] : null;
             if (s != null) {
                 f.setLong("in", s.rateIn());
                 f.setLong("out", s.rateOut());
             }
-            l.appendTag(f);
+            if (p.steam) {
+                anySteam |= vis != TileConnector.VIS_NONE;
+                steam.appendTag(f);
+            } else l.appendTag(f);
         }
         t.setTag("faces", l);
+        t.setTag("steam", steam);
+        t.setBoolean("hasSteam", anySteam);
         return t;
     }
 

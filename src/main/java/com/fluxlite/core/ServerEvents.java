@@ -27,6 +27,7 @@ public final class ServerEvents {
     private static long tick;
     private static int dayKey;
     private static final Map<UUID, long[]> TEAM_TICK = new HashMap<>();
+    private static final Map<UUID, long[]> TEAM_STEAM_TICK = new HashMap<>();
 
     public static long tick() {
         return tick;
@@ -39,13 +40,23 @@ public final class ServerEvents {
     public static void reset() {
         tick = 0;
         TEAM_TICK.clear();
+        TEAM_STEAM_TICK.clear();
         Settlement.reset();
     }
 
     /** Called by each connector once per tick with its committed totals. */
     public static void addTeamTick(UUID team, long in, long out, long demand, boolean active) {
+        add(TEAM_TICK, team, in, out, demand, active);
+    }
+
+    /** Same for steam (litres). */
+    public static void addTeamSteamTick(UUID team, long in, long out, long demand, boolean active) {
+        add(TEAM_STEAM_TICK, team, in, out, demand, active);
+    }
+
+    private static void add(Map<UUID, long[]> map, UUID team, long in, long out, long demand, boolean active) {
         if (team == null) return;
-        long[] a = TEAM_TICK.computeIfAbsent(team, k -> new long[4]);
+        long[] a = map.computeIfAbsent(team, k -> new long[4]);
         a[0] = sat(a[0], in);
         a[1] = sat(a[1], out);
         a[2] = sat(a[2], demand);
@@ -72,14 +83,20 @@ public final class ServerEvents {
             long[] a = TEAM_TICK.get(team.leader);
             if (a != null) team.series.tick(a[0], a[1], a[2], a[3] != 0, now);
             else team.series.tick(0, 0, 0, false, now);
+            long[] s = TEAM_STEAM_TICK.get(team.leader);
+            if (s != null) team.steamSeries.tick(s[0], s[1], s[2], s[3] != 0, now);
+            else team.steamSeries.tick(0, 0, 0, false, now);
         }
         for (UUID leader : TEAM_TICK.keySet()) if (reg.teamIfPresent(leader) == null) reg.team(leader);
+        for (UUID leader : TEAM_STEAM_TICK.keySet()) if (reg.teamIfPresent(leader) == null) reg.team(leader);
         TEAM_TICK.clear();
+        TEAM_STEAM_TICK.clear();
 
         if (tick % 20 == 0) {
             dayKey = computeDayKey();
             for (TeamData team : reg.teams()) {
                 team.series.rollSecond(dayKey);
+                team.steamSeries.rollSecond(dayKey);
                 team.backendDown = !GTWirelessBackend.INSTANCE.isAvailable();
                 team.balance = GTWirelessBackend.INSTANCE.getBalance(team.leader);
             }

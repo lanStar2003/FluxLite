@@ -64,6 +64,15 @@ public final class Wrenches {
         }
     }
 
+    /** Is this item a wrench of any of the known kinds? */
+    public static boolean isWrench(ItemStack s) {
+        if (s == null || s.getItem() == null) return false;
+        return !kind(s.getItem()).isEmpty() || gtWrench(s)
+            || s.getItem()
+                .getToolClasses(s)
+                .contains("wrench");
+    }
+
     /** Is the held item a wrench that can be used on this block right now (charged, not broken)? */
     public static boolean usable(ItemStack s, EntityPlayer player, int x, int y, int z) {
         if (s == null || s.getItem() == null) return false;

@@ -8,6 +8,7 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 
 import com.fluxlite.core.MachineSample;
+import com.fluxlite.core.Port;
 import com.fluxlite.core.stats.Series;
 
 /** Registry entry of one connector. Survives chunk unloads; removed when the block is broken. */
@@ -25,10 +26,13 @@ public final class ConnectorRecord {
     public boolean chunkLoaded;
     public boolean chunkLoadFailed;
 
-    public final PortInfo[] ports = new PortInfo[6];
+    /** 0-5: EU per face, 6-11: steam per face (see {@link Port#index}). */
+    public final PortInfo[] ports = new PortInfo[Port.COUNT];
     /** Per-port statistics, created when a port first becomes active. */
-    public final Series[] portSeries = new Series[6];
+    public final Series[] portSeries = new Series[Port.COUNT];
     public Series total = new Series();
+    /** Steam in litres; created when the connector first moves steam. */
+    public Series steamTotal;
 
     /** Machines found behind cables; not persisted. */
     public final transient Map<Long, Sampled> samples = new LinkedHashMap<>();
@@ -43,12 +47,17 @@ public final class ConnectorRecord {
 
     public ConnectorRecord(long id) {
         this.id = id;
-        for (int i = 0; i < 6; i++) ports[i] = new PortInfo();
+        for (int i = 0; i < Port.COUNT; i++) ports[i] = new PortInfo();
     }
 
-    public Series portSeries(int side) {
-        if (portSeries[side] == null) portSeries[side] = new Series();
-        return portSeries[side];
+    public Series portSeries(int index) {
+        if (portSeries[index] == null) portSeries[index] = new Series();
+        return portSeries[index];
+    }
+
+    public Series steamTotal() {
+        if (steamTotal == null) steamTotal = new Series();
+        return steamTotal;
     }
 
     public String displayName() {
@@ -72,7 +81,7 @@ public final class ConnectorRecord {
         t.setString("g", group == null ? "" : group);
         t.setLong("ls", lastSeen);
         NBTTagList pl = new NBTTagList();
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < Port.COUNT; i++) {
             NBTTagCompound p = new NBTTagCompound();
             ports[i].write(p);
             if (portSeries[i] != null) p.setTag("st", portSeries[i].write());
@@ -80,6 +89,7 @@ public final class ConnectorRecord {
         }
         t.setTag("p", pl);
         t.setTag("tot", total.write());
+        if (steamTotal != null) t.setTag("stot", steamTotal.write());
         return t;
     }
 
@@ -95,12 +105,13 @@ public final class ConnectorRecord {
         r.group = t.getString("g");
         r.lastSeen = t.getLong("ls");
         NBTTagList pl = t.getTagList("p", 10);
-        for (int i = 0; i < Math.min(6, pl.tagCount()); i++) {
+        for (int i = 0; i < Math.min(Port.COUNT, pl.tagCount()); i++) {
             NBTTagCompound p = pl.getCompoundTagAt(i);
             r.ports[i].read(p);
             if (p.hasKey("st")) r.portSeries[i] = Series.read(p.getCompoundTag("st"));
         }
         if (t.hasKey("tot")) r.total = Series.read(t.getCompoundTag("tot"));
+        if (t.hasKey("stot")) r.steamTotal = Series.read(t.getCompoundTag("stot"));
         return r;
     }
 }

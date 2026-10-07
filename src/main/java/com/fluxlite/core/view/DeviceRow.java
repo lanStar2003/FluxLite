@@ -12,8 +12,11 @@ public final class DeviceRow {
 
     /** Status codes, also the order of the status filter. */
     public static final int ST_RUNNING = 0, ST_IDLE = 1, ST_OFFLINE = 2, ST_OFF = 3, ST_ERROR = 4;
-    /** Kind codes: a device right at a face, a cable at a face, a machine found behind a cable. */
-    public static final int KIND_DIRECT = 0, KIND_CABLE = 1, KIND_BEHIND = 2;
+    /**
+     * Kind codes: a device right at a face, a face reaching its devices through a cable, a machine found behind a
+     * cable (sampled), a steam face.
+     */
+    public static final int KIND_DIRECT = 0, KIND_CABLE = 1, KIND_BEHIND = 2, KIND_STEAM = 3;
 
     public String key;
     public String name;
@@ -29,6 +32,10 @@ public final class DeviceRow {
     public long nowIn, nowOut, peak;
     public BigInteger total = BigInteger.ZERO;
     public boolean sampled, online, cable;
+    /** Litres of steam instead of EU. */
+    public boolean steam;
+    /** A cable face with several machines on it; they are listed one by one as well. */
+    public boolean group;
     public int status, kind;
     /** Buffer fill of a sampled machine in per mille, -1 when unknown. */
     public int fill = -1;
@@ -50,6 +57,7 @@ public final class DeviceRow {
         t.setString("tot", total.toString());
         t.setBoolean("s", sampled);
         t.setBoolean("on", online);
+        if (steam) t.setBoolean("stm", true);
         t.setByte("st", (byte) status);
         t.setByte("kd", (byte) kind);
         t.setByte("sd", (byte) side);

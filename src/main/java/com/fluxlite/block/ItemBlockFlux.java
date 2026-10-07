@@ -37,7 +37,7 @@ public class ItemBlockFlux extends ItemBlock {
             int off = Integer.bitCount(t.getByte("off") & 0x3F);
             if (off > 0) list.add(
                 EnumChatFormatting.AQUA + StatCollector.translateToLocalFormatted("fluxlite.tooltip.saved_off", off));
-            if (t.hasKey("rs") || t.hasKey("noHolo"))
+            if (t.hasKey("rs") || t.hasKey("noHolo") || t.hasKey("holoSize") || t.hasKey("holoOpaque"))
                 list.add(EnumChatFormatting.AQUA + StatCollector.translateToLocal("fluxlite.tooltip.saved_settings"));
         }
         if (!GuiScreen.isShiftKeyDown()) {

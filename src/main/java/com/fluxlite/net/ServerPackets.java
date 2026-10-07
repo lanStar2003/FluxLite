@@ -11,6 +11,7 @@ import net.minecraft.world.World;
 import com.fluxlite.backend.GTWirelessBackend;
 import com.fluxlite.core.view.ConnectorView;
 import com.fluxlite.core.view.ControlCenterView;
+import com.fluxlite.item.ItemFluxTerminal;
 import com.fluxlite.tile.TileConnector;
 import com.fluxlite.tile.TileControlCenter;
 
@@ -58,11 +59,17 @@ public final class ServerPackets {
                 Net.toClient(player, Kinds.CONNECTOR_DATA, ConnectorView.build(c));
             }
             case Kinds.CC_REQUEST -> {
-                if (te instanceof TileControlCenter cc)
+                // the handheld terminal works anywhere, as long as the player carries one
+                if (d.getBoolean("hand")) {
+                    if (ItemFluxTerminal.carries(player))
+                        Net.toClient(player, Kinds.CC_DATA, ControlCenterView.build(player, null, d));
+                } else if (te instanceof TileControlCenter cc)
                     Net.toClient(player, Kinds.CC_DATA, ControlCenterView.build(player, cc, d));
             }
             case Kinds.CC_ACTION -> {
-                if (te instanceof TileControlCenter cc) ControlCenterView.action(player, cc, d);
+                if (d.getBoolean("hand")) {
+                    if (ItemFluxTerminal.carries(player)) ControlCenterView.action(player, null, d);
+                } else if (te instanceof TileControlCenter cc) ControlCenterView.action(player, cc, d);
             }
             default -> {}
         }

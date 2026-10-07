@@ -1,7 +1,9 @@
 package com.fluxlite.adapter;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import net.minecraft.tileentity.TileEntity;
@@ -11,6 +13,7 @@ import net.minecraftforge.common.util.ForgeDirection;
 import com.fluxlite.Config;
 import com.fluxlite.core.MachineSample;
 import com.fluxlite.tile.TileConnector;
+import com.fluxlite.util.Names;
 
 import ic2.api.energy.EnergyNet;
 import ic2.api.energy.tile.IEnergyConductor;
@@ -30,6 +33,8 @@ public final class IC2CableAdapter implements EnergyAdapter {
     private final TileConnector connector;
     private final ForgeDirection face;
     private int sinks, sources, cables, safeTier = 13, maxSourceTier;
+    /** The machines on the cable, sinks first. */
+    private final List<TileEntity> devices = new ArrayList<>();
     private long scannedAt = Long.MIN_VALUE;
 
     public IC2CableAdapter(TileEntity cable, TileConnector connector, ForgeDirection face) {
@@ -56,6 +61,8 @@ public final class IC2CableAdapter implements EnergyAdapter {
         sinks = sources = cables = 0;
         safeTier = 13;
         maxSourceTier = 0;
+        devices.clear();
+        List<TileEntity> sourceTiles = new ArrayList<>();
         World w = cable.getWorldObj();
         Set<Long> seen = new HashSet<>();
         ArrayDeque<TileEntity> queue = new ArrayDeque<>();
@@ -80,16 +87,20 @@ public final class IC2CableAdapter implements EnergyAdapter {
                     if (c.emitsEnergyTo(n, d) && nc.acceptsEnergyFrom(te, back)) queue.add(n);
                     continue;
                 }
-                if (n instanceof IEnergySink s && s.acceptsEnergyFrom(te, back)) {
+                boolean sink = n instanceof IEnergySink s && s.acceptsEnergyFrom(te, back);
+                if (sink) {
                     sinks++;
-                    safeTier = Math.min(safeTier, Math.min(13, s.getSinkTier()));
+                    safeTier = Math.min(safeTier, Math.min(13, ((IEnergySink) n).getSinkTier()));
+                    devices.add(n);
                 }
                 if (n instanceof IEnergySource s && s.emitsEnergyTo(te, back)) {
                     sources++;
                     maxSourceTier = Math.max(maxSourceTier, s.getSourceTier());
+                    if (!sink) sourceTiles.add(n);
                 }
             }
         }
+        devices.addAll(sourceTiles);
     }
 
     private static int tierOf(double eu) {
@@ -190,8 +201,20 @@ public final class IC2CableAdapter implements EnergyAdapter {
 
     @Override
     public String displayName() {
-        String n = cable.getBlockType() != null ? cable.getBlockType()
-            .getLocalizedName() : "IC2";
-        return n + " ×" + cables;
+        List<String> names = new ArrayList<>();
+        for (TileEntity te : devices) names.add(Names.of(te));
+        return Names.summarize(names);
+    }
+
+    @Override
+    public int deviceCount() {
+        return devices.size();
+    }
+
+    @Override
+    public int[] devicePos() {
+        if (devices.size() != 1) return null;
+        TileEntity te = devices.get(0);
+        return new int[] { te.xCoord, te.yCoord, te.zCoord };
     }
 }

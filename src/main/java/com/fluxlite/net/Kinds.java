@@ -22,6 +22,9 @@ public final class Kinds {
     public static final int ACT_CHAT = 0;
     public static final int ACT_REDSTONE = 1;
     public static final int ACT_HOLOGRAM = 2;
+    /** Hologram size, 0 (small) to 3 (extra large), in "value". */
+    public static final int ACT_HOLO_SIZE = 3;
+    public static final int ACT_HOLO_OPAQUE = 4;
 
     private Kinds() {}
 }

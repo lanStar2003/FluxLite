@@ -1,6 +1,9 @@
 package com.fluxlite.adapter;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import net.minecraft.tileentity.TileEntity;
 import net.minecraftforge.common.util.ForgeDirection;
@@ -9,6 +12,7 @@ import com.fluxlite.Config;
 import com.fluxlite.core.CableScanner;
 import com.fluxlite.core.MachineSample;
 import com.fluxlite.tile.TileConnector;
+import com.fluxlite.util.Names;
 
 import gregtech.api.graphs.GenerateNodeMapPower;
 import gregtech.api.interfaces.tileentity.IBasicEnergyContainer;
@@ -30,8 +34,8 @@ public final class GTCableAdapter implements EnergyAdapter {
     /** Face of the cable that touches the connector. */
     private final ForgeDirection face;
     private CableScanner.Result scan;
+    private List<TileEntity> endpoints = new ArrayList<>();
     private long scannedAt = Long.MIN_VALUE;
-    private long cachedDemand;
 
     public GTCableAdapter(BaseMetaPipeEntity pipe, TileConnector connector, ForgeDirection side) {
         this.pipe = pipe;
@@ -49,34 +53,47 @@ public final class GTCableAdapter implements EnergyAdapter {
     public void refresh() {
         long now = connector.getWorldObj()
             .getTotalWorldTime();
-        if (scan != null && now - scannedAt < Config.cableRescanInterval) {
-            updateDemand();
-            return;
-        }
+        if (scan != null && now - scannedAt < Config.cableRescanInterval) return;
         scannedAt = now;
         scan = CableScanner.scan(pipe, connector, side);
-        updateDemand();
+        endpoints = endpoints();
     }
 
     public void invalidateScan() {
         scannedAt = Long.MIN_VALUE;
     }
 
-    private void updateDemand() {
+    /** Every device on the cable once: consumers first, then pure producers. */
+    private List<TileEntity> endpoints() {
+        List<TileEntity> l = new ArrayList<>();
+        Set<TileEntity> seen = new HashSet<>();
+        for (CableScanner.Endpoint e : scan.consumers) if (seen.add(e.tile)) l.add(e.tile);
+        for (CableScanner.Endpoint e : scan.producers) if (seen.add(e.tile)) l.add(e.tile);
+        return l;
+    }
+
+    /**
+     * What the machines on the cable take this tick, worked out the way GT accepts packets: a machine whose buffer is
+     * not full takes one more packet than fits (up to its amperage). Computed every tick: a snapshot taken once per
+     * second would count a full packet of demand for every tick until the next snapshot, although the machine only
+     * takes one every few ticks, and the face would look under-supplied.
+     */
+    private long currentDemand() {
+        long v = inputVoltage();
+        if (v <= 0) return 0;
         long sum = 0;
         for (CableScanner.Endpoint e : scan.consumers) {
             if (e.tile.isInvalid()) continue;
             if (e.tile instanceof IBasicEnergyContainer c) {
-                long v = c.getInputVoltage();
-                if (v <= 0 || v >= Integer.MAX_VALUE) continue;
+                long in = c.getInputVoltage();
+                if (in <= 0 || in >= Integer.MAX_VALUE) continue;
                 long free = c.getEUCapacity() - c.getStoredEU();
-                if (free > 0) sum += Math.min(c.getInputAmperage(), (free + v - 1) / v) * v;
+                if (free > 0) sum += Math.min(c.getInputAmperage(), 1 + free / v) * v;
             } else {
-                sum += Math.max(0, e.inAmperage) * Math.max(0, Math.min(e.inVoltage, Integer.MAX_VALUE));
+                sum += Math.max(0, e.inAmperage) * v;
             }
         }
-        long cap = safeMul(inputVoltage(), inputAmperage());
-        cachedDemand = Math.min(sum, cap);
+        return Math.min(sum, safeMul(v, inputAmperage()));
     }
 
     private static long safeMul(long a, long b) {
@@ -156,7 +173,7 @@ public final class GTCableAdapter implements EnergyAdapter {
 
     @Override
     public long demand() {
-        return cachedDemand;
+        return currentDemand();
     }
 
     @Override
@@ -187,9 +204,21 @@ public final class GTCableAdapter implements EnergyAdapter {
 
     @Override
     public String displayName() {
-        String base = pipe.getMetaTileEntity() != null ? pipe.getMetaTileEntity()
-            .getLocalName() : "Cable";
-        return base + " ×" + scan.cables;
+        List<String> names = new ArrayList<>();
+        for (TileEntity te : endpoints) names.add(Names.of(te));
+        return Names.summarize(names);
+    }
+
+    @Override
+    public int deviceCount() {
+        return endpoints.size();
+    }
+
+    @Override
+    public int[] devicePos() {
+        if (endpoints.size() != 1) return null;
+        TileEntity te = endpoints.get(0);
+        return new int[] { te.xCoord, te.yCoord, te.zCoord };
     }
 
     @Override
