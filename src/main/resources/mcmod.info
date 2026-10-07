@@ -1,0 +1,21 @@
+{
+	"modListVersion": 2,
+	"modList": [{
+		"modid": "${modId}",
+		"name": "${modName}",
+		"description": "Simplified flux networks on top of the GT wireless EU network: connectors with auto-detecting ports, voltage-safe injection, pooled chunk loading and a control center with detailed energy statistics.",
+		"version": "${modVersion}",
+		"mcversion": "${minecraftVersion}",
+		"url": "",
+		"updateUrl": "",
+		"authorList": ["lan"],
+		"credits": "Design inspired by Flux Networks and GT-Simple-Wireless-Network",
+		"logoFile": "",
+		"screenshots": [],
+		"parent": "",
+		"requiredMods": ["gregtech"],
+		"dependencies": ["gregtech"],
+		"dependants": [],
+		"useDependencyInformation": true
+	}]
+}
