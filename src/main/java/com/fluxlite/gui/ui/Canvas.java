@@ -35,4 +35,10 @@ public interface Canvas {
 
     /** Multiplies the alpha of everything drawn afterwards (fades). 1 = as given. */
     void setOpacity(float opacity);
+
+    /**
+     * In the world: what follows is a solid surface ({@code true}: it hides what is behind it, also from shaders) or
+     * drawn on top of the last one ({@code false}). Does nothing elsewhere.
+     */
+    default void surface(boolean solid) {}
 }

@@ -19,7 +19,9 @@ public final class TeamData {
     public Series series = new Series();
     /** Steam moved by the team's connectors, in litres. */
     public Series steamSeries = new Series();
-    public boolean chatAlerts = true;
+    /** Alerts are worked out at all. Off until the team switches them on, like the chat messages. */
+    public boolean alertsOn;
+    public boolean chatAlerts;
 
     // runtime
     public BigInteger balance = BigInteger.ZERO;
@@ -39,7 +41,8 @@ public final class TeamData {
         t.setLong("ll", leader.getLeastSignificantBits());
         t.setTag("s", series.write());
         t.setTag("ss", steamSeries.write());
-        t.setBoolean("chat", chatAlerts);
+        t.setBoolean("al", alertsOn);
+        t.setBoolean("ch", chatAlerts);
         return t;
     }
 
@@ -53,7 +56,9 @@ public final class TeamData {
             d.steamSeries = Series.read(t.getCompoundTag("ss"));
             d.steamSeries.keepTicks();
         }
-        d.chatAlerts = !t.hasKey("chat") || t.getBoolean("chat");
+        // "chat" of 0.5.0 and older defaulted to on; both start off now
+        d.alertsOn = t.getBoolean("al");
+        d.chatAlerts = t.getBoolean("ch");
         return d;
     }
 }

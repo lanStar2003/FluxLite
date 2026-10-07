@@ -11,7 +11,7 @@ import com.fluxlite.core.stats.Series;
 import com.fluxlite.net.Kinds;
 import com.fluxlite.tile.TileConnector;
 
-/** Builds the connector card payload and applies the two edits it allows (name, face on/off). */
+/** Builds the connector card payload and applies its edits (name, face on/off, fixed direction). */
 public final class ConnectorView {
 
     private ConnectorView() {}
@@ -46,12 +46,18 @@ public final class ConnectorView {
             Port p = c.ports[i];
             NBTTagCompound f = new NBTTagCompound();
             f.setByte("side", (byte) (i % 6));
+            f.setByte("ch", (byte) i);
             byte vis = c.visualFor(p);
             f.setByte("vis", vis);
             f.setByte("role", (byte) p.role.ordinal());
             f.setByte("status", (byte) p.status.ordinal());
             f.setString("target", p.targetName == null ? "" : p.targetName);
-            if (!p.steam) f.setLong("v", p.role.supplies() ? p.supplyVoltage : p.collectVoltage);
+            if (!p.steam && p.unitTag == null) f.setLong("v", p.role.supplies() ? p.supplyVoltage : p.collectVoltage);
+            if (p.unitTag != null && !p.unitTag.isEmpty()) f.setString("unit", p.unitTag);
+            if (TileConnector.canChooseDirection(p)) {
+                f.setBoolean("choose", true);
+                f.setByte("fixed", (byte) p.fixed.ordinal());
+            }
             Series s = r != null ? r.portSeries[i] : null;
             if (s != null) {
                 f.setLong("in", s.rateIn());
@@ -78,6 +84,7 @@ public final class ConnectorView {
                 if (reg != null) reg.markDirty();
             }
             case Kinds.OP_TOGGLE -> c.toggleSide(d.getInteger("side"));
+            case Kinds.OP_DIRECTION -> c.cycleDirection(d.getInteger("side"));
             default -> {}
         }
     }

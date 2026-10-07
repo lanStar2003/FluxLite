@@ -86,7 +86,7 @@ public final class WailaCompat implements IWailaDataProvider {
                     + "  "
                     + value
                     + EnumChatFormatting.DARK_GRAY
-                    + (steam ? "" : "  " + Fmt.tier(p.getLong("v"))));
+                    + (steam ? "" : "  " + (p.hasKey("u") ? p.getString("u") : Fmt.tier(p.getLong("v")))));
         }
         return tip;
     }
@@ -112,7 +112,8 @@ public final class WailaCompat implements IWailaDataProvider {
             pt.setByte("s", (byte) (i % 6));
             if (p.steam) pt.setBoolean("st", true);
             pt.setByte("r", (byte) (p.isWorking() ? p.role.ordinal() : 0));
-            pt.setLong("v", p.role.supplies() ? p.supplyVoltage : p.collectVoltage);
+            if (p.unitTag == null) pt.setLong("v", p.role.supplies() ? p.supplyVoltage : p.collectVoltage);
+            else pt.setString("u", p.unitTag);
             Series s = r != null ? r.portSeries[i] : null;
             if (s != null) {
                 pt.setLong("in", s.rateIn());

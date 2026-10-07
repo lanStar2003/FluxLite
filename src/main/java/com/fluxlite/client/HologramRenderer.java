@@ -20,6 +20,11 @@ import cpw.mods.fml.relauncher.SideOnly;
 /**
  * Projects the floating display above a control center: a beam of light from the lens on its top and the panel,
  * facing the same way as the block's screen. It unfolds when a player comes close and folds away again.
+ * <p>
+ * Drawn in the translucent pass (see {@link TileControlCenter#shouldRenderInPass}), after water and, with a shader
+ * pack, after its deferred lighting; the panel writes depth so shaders treat it as a surface rather than as whatever is
+ * behind it. It is lit by block light only (no sky light), so a shader pack's daylight and shadows leave it alone, and
+ * it casts no shadow.
  */
 @SideOnly(Side.CLIENT)
 public final class HologramRenderer extends TileEntitySpecialRenderer {
@@ -29,7 +34,7 @@ public final class HologramRenderer extends TileEntitySpecialRenderer {
 
     @Override
     public void renderTileEntityAt(TileEntity te, double x, double y, double z, float partial) {
-        if (!(te instanceof TileControlCenter cc) || cc.holo == null) return;
+        if (!(te instanceof TileControlCenter cc) || cc.holo == null || ShaderCompat.shadowPass()) return;
         HoloState s = cc.holo;
         long now = Minecraft.getSystemTime();
         double cx = x + 0.5, cy = y + 1.5, cz = z + 0.5;
@@ -65,7 +70,7 @@ public final class HologramRenderer extends TileEntitySpecialRenderer {
         GL11.glEnable(GL11.GL_BLEND);
         GL11.glDepthMask(false);
         GL11.glShadeModel(GL11.GL_SMOOTH);
-        OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, 240f, 240f);
+        OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, 240f, ShaderCompat.packInUse() ? 0f : 240f);
 
         GL11.glDisable(GL11.GL_TEXTURE_2D);
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
@@ -76,8 +81,10 @@ public final class HologramRenderer extends TileEntitySpecialRenderer {
         GL11.glScalef(unit, -unit, unit);
         HoloPanel.draw(McCanvas.world(func_147498_b()), s, now, back, cc.holoOpaque, TR);
 
+        GL11.glPolygonOffset(0, 0);
         GL11.glShadeModel(GL11.GL_FLAT);
         GL11.glPopAttrib();
+        McCanvas.restoreTexture();
         GL11.glPopMatrix();
         GL11.glColor4f(1, 1, 1, 1);
     }
@@ -87,6 +94,7 @@ public final class HologramRenderer extends TileEntitySpecialRenderer {
         float a = Math.min(1, open * 1.5f);
         Tessellator t = Tessellator.instance;
         t.startDrawing(GL11.GL_TRIANGLES);
+        t.setNormal(0, 1, 0);
         // panel plane
         t.setColorRGBA_F(0.39f, 0.82f, 1f, 0.30f * a);
         t.addVertex(0, 0.02, 0);
@@ -102,6 +110,7 @@ public final class HologramRenderer extends TileEntitySpecialRenderer {
         t.draw();
         // glow on the lens
         t.startDrawing(GL11.GL_TRIANGLE_FAN);
+        t.setNormal(0, 1, 0);
         t.setColorRGBA_F(0.6f, 0.9f, 1f, 0.55f * a);
         t.addVertex(0, 0.015, 0);
         t.setColorRGBA_F(0.39f, 0.82f, 1f, 0);

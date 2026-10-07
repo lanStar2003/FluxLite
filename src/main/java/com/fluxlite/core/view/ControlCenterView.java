@@ -108,9 +108,14 @@ public final class ControlCenterView {
             || ServerPackets.isOp(player);
         if (!member) return;
         int act = q.getInteger("action");
-        if (act == Kinds.ACT_CHAT) {
+        if (act == Kinds.ACT_CHAT || act == Kinds.ACT_ALERTS) {
             TeamData td = reg.team(team);
-            td.chatAlerts = !td.chatAlerts;
+            if (act == Kinds.ACT_CHAT) td.chatAlerts = !td.chatAlerts;
+            else {
+                td.alertsOn = !td.alertsOn;
+                // gone at once, not with the next evaluation
+                if (!td.alertsOn) td.alerts.clear();
+            }
             reg.markDirty();
             return;
         }
@@ -272,6 +277,7 @@ public final class ControlCenterView {
                 d.role = roleCode(p.role);
                 d.steam = steam;
                 d.voltage = steam ? 0 : p.voltage();
+                d.unit = steam ? null : p.unitTag;
                 d.tier = steam ? -1 : Fmt.tierIndex(d.voltage);
                 d.online = r.online && p.isWorking();
                 d.cable = p.cable;
@@ -537,6 +543,7 @@ public final class ControlCenterView {
     // ------------------------------------------------------------------ alerts & settings
 
     private static void alerts(NBTTagCompound out, TeamData td) {
+        out.setBoolean("alertsOn", td.alertsOn);
         NBTTagList l = new NBTTagList();
         for (Alert a : td.alerts) l.appendTag(a.write());
         out.setTag("alertList", l);
@@ -544,6 +551,7 @@ public final class ControlCenterView {
 
     /** Team settings, plus the block's own ones when opened from a control center. */
     private static void settings(NBTTagCompound out, TeamData td, EntityPlayerMP player, TileControlCenter cc) {
+        out.setBoolean("alertsOn", td.alertsOn);
         out.setBoolean("chat", td.chatAlerts);
         if (cc == null) return;
         out.setBoolean("redstone", cc.redstoneOnAlert);

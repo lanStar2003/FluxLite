@@ -5,7 +5,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
+import net.minecraftforge.event.world.BlockEvent;
 import net.minecraftforge.event.world.ChunkEvent;
 import net.minecraftforge.event.world.WorldEvent;
 
@@ -122,6 +124,23 @@ public final class ServerEvents {
         for (Object o : chunk.chunkTileEntityMap.values()) {
             if (o instanceof TileConnector c) c.release();
         }
+    }
+
+    /** A machine or cable placed next to a connector's cable is picked up right away (see TileConnector). */
+    @SubscribeEvent
+    public void onPlace(BlockEvent.PlaceEvent e) {
+        blockChanged(e.world, e.x, e.y, e.z);
+    }
+
+    /** Fired before the block goes; the connectors only scan again on their next tick, when it is gone. */
+    @SubscribeEvent
+    public void onBreak(BlockEvent.BreakEvent e) {
+        blockChanged(e.world, e.x, e.y, e.z);
+    }
+
+    private static void blockChanged(World world, int x, int y, int z) {
+        if (world == null || world.isRemote) return;
+        for (TileConnector c : Settlement.live()) if (c.getWorldObj() == world) c.onBlockChanged(x, y, z);
     }
 
     @SubscribeEvent

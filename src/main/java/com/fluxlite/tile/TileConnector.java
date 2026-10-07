@@ -27,6 +27,8 @@ import com.fluxlite.FluxLite;
 import com.fluxlite.adapter.Adapters;
 import com.fluxlite.adapter.EnergyAdapter;
 import com.fluxlite.adapter.GTCableAdapter;
+import com.fluxlite.adapter.RF;
+import com.fluxlite.adapter.RFAdapter;
 import com.fluxlite.adapter.SteamAdapter;
 import com.fluxlite.backend.GTWirelessBackend;
 import com.fluxlite.backend.SteamNetwork;
@@ -43,7 +45,6 @@ import com.fluxlite.core.registry.PortInfo;
 import com.fluxlite.core.registry.Registry;
 
 import cofh.api.energy.IEnergyHandler;
-import gregtech.api.GregTechAPI;
 import gregtech.api.graphs.GenerateNodeMap;
 import gregtech.api.graphs.GenerateNodeMapPower;
 import gregtech.api.graphs.Node;
@@ -56,8 +57,10 @@ import ic2.api.energy.tile.IEnergySource;
 
 /**
  * Flux connector. Every face connects by itself: generators and dynamo hatches feed the wireless network (input),
- * machines and energy hatches are fed from it (output), cables with both get both. Speaks GT EU directly, IC2 EU
- * through the IC2 energy net and RF through the CoFH API.
+ * machines and energy hatches are fed from it (output), a GT cable with both gets both, one way at a time (see
+ * {@link GTCableAdapter}). Speaks GT EU directly, IC2 EU through the IC2 energy net and RF through the CoFH API; the
+ * adapters ({@link Adapters}) decide the direction, the player can fix it per channel where a device could go either
+ * way.
  * <p>
  * Each face also has a steam channel ({@code ports[6..11]}): boilers fill the team's steam network, steam machines are
  * fed from it. Steam goes straight in and out of the network, through Forge's fluid interface.
@@ -238,10 +241,27 @@ public class TileConnector extends TileEntity
 
     public void markNeighborChanged() {
         needsResolve = true;
+        for (Port p : ports) if (p.adapter != null) p.adapter.invalidateScan();
+    }
+
+    /**
+     * A block was placed or broken at x, y, z: a cable behind a face that reaches it (or ends next to it) is scanned
+     * again, so a machine added to or taken off the cable counts right away.
+     */
+    public void onBlockChanged(int x, int y, int z) {
         for (Port p : ports) {
-            if (p.adapter instanceof GTCableAdapter c) c.invalidateScan();
-            else if (p.adapter instanceof SteamAdapter s) s.invalidateScan();
+            EnergyAdapter a = p.adapter;
+            if (a == null || !a.isCable() || !touches(a, x, y, z)) continue;
+            a.invalidateScan();
+            needsResolve = true;
         }
+    }
+
+    private static boolean touches(EnergyAdapter a, int x, int y, int z) {
+        if (a.covers(MachineSample.posKey(x, y, z))) return true;
+        for (ForgeDirection d : ForgeDirection.VALID_DIRECTIONS)
+            if (a.covers(MachineSample.posKey(x + d.offsetX, y + d.offsetY, z + d.offsetZ))) return true;
+        return false;
     }
 
     /** The only setting of a face: on (automatic) or off. Switches its EU and steam channel together. */
@@ -251,6 +271,39 @@ public class TileConnector extends TileEntity
         ports[side].mode = ports[side + 6].mode = next;
         needsResolve = true;
         markDirty();
+    }
+
+    /**
+     * Cycles the direction of one channel (0-5 EU, 6-11 steam): automatic, fixed input, fixed output. Only for
+     * devices that could go either way.
+     */
+    public void cycleDirection(int index) {
+        if (index < 0 || index >= Port.COUNT) return;
+        Port p = ports[index];
+        if (!canChooseDirection(p)) {
+            p.fixed = PortRole.NONE;
+        } else {
+            p.fixed = switch (p.fixed) {
+                case INPUT -> PortRole.OUTPUT;
+                case OUTPUT -> PortRole.NONE;
+                default -> PortRole.INPUT;
+            };
+        }
+        needsResolve = true;
+        markDirty();
+    }
+
+    /** The device on this channel can take energy and give it, so its direction can be fixed either way. */
+    public static boolean canChooseDirection(Port p) {
+        EnergyAdapter a = p.adapter;
+        return a != null && p.mode != PortMode.OFF && a.attached() && a.canReceive() && a.canSend();
+    }
+
+    /** The player's fixed direction when the device can go that way, otherwise the automatic one. */
+    private static PortRole chooseRole(Port p, EnergyAdapter a) {
+        if (p.fixed == PortRole.INPUT && a.canSend()) return PortRole.INPUT;
+        if (p.fixed == PortRole.OUTPUT && a.canReceive()) return PortRole.OUTPUT;
+        return a.autoRole();
     }
 
     // ------------------------------------------------------------------ per tick work
@@ -299,7 +352,8 @@ public class TileConnector extends TileEntity
             return;
         }
         if (p.supplies() && !a.viaIc2()) {
-            long demand = a.demand();
+            long tick = ServerEvents.tick();
+            long demand = p.mayHandOut(tick) ? a.demand() : 0;
             p.tickDemand += demand;
             if (p.supply > 0 && demand > 0) {
                 long used;
@@ -312,6 +366,7 @@ public class TileConnector extends TileEntity
                 if (used > 0) {
                     p.supply -= used;
                     p.tickOut += used;
+                    p.lastOutTick = tick;
                 }
             }
         } else if (p.supplies()) {
@@ -363,10 +418,11 @@ public class TileConnector extends TileEntity
             PortRole oldRole = p.role;
             PortStatus oldStatus = p.status;
             resolve(p);
-            if (p.role != oldRole || p.status != oldStatus) {
-                if (!p.steam) refreshCableGraph(p);
-                changed = true;
-            }
+            boolean moved = p.role != oldRole || p.status != oldStatus;
+            // GT's graph caches who takes energy: the connector itself, and devices GT does not rebuild it for
+            boolean devices = p.adapter instanceof GTCableAdapter c && c.takeTopologyChange();
+            if (!p.steam && (moved || devices)) refreshCableGraph(p);
+            changed |= moved;
         }
         if (changed) markDirty();
         if (changed || !chunkSynced) {
@@ -375,6 +431,7 @@ public class TileConnector extends TileEntity
         }
         updateIc2Registration();
         syncVisual(false);
+        syncRecord();
     }
 
     private void resolve(Port p) {
@@ -405,17 +462,7 @@ public class TileConnector extends TileEntity
             return;
         }
         a.refresh();
-        boolean recv = a.canReceive();
-        boolean send = a.canSend();
-        PortRole role;
-        if (recv && send) {
-            // a GT cable carrying both can be fed and drained at once (see Settlement#supplying); a single device
-            // that does both (an energy storage) is drained into the network
-            role = a.isCable() && !a.viaIc2() ? PortRole.BOTH : PortRole.INPUT;
-        } else if (recv) role = PortRole.OUTPUT;
-        else if (send) role = PortRole.INPUT;
-        else role = PortRole.NONE;
-
+        PortRole role = chooseRole(p, a);
         PortStatus status = role == PortRole.NONE ? PortStatus.NO_TARGET : PortStatus.OK;
         if (role.supplies() && !a.hasInputSpec()) {
             if (role == PortRole.BOTH) role = PortRole.INPUT;
@@ -438,8 +485,7 @@ public class TileConnector extends TileEntity
             return;
         }
         a.refresh();
-        // a pipe with machines on it is fed, even when boilers push into it too
-        PortRole role = a.canReceive() ? PortRole.OUTPUT : a.canSend() ? PortRole.INPUT : PortRole.NONE;
+        PortRole role = chooseRole(p, a);
         set(p, a, role, role == PortRole.NONE ? PortStatus.NO_TARGET : PortStatus.OK);
     }
 
@@ -448,6 +494,7 @@ public class TileConnector extends TileEntity
         p.role = role;
         p.status = status;
         p.targetName = a == null ? "" : a.displayName();
+        p.unitTag = a == null ? null : a.unitTag();
         p.supplyVoltage = a != null && role.supplies() ? a.inputVoltage() : 0;
         p.supplyAmperage = a != null && role.supplies() ? a.inputAmperage() : 0;
         p.collectVoltage = a != null && role.collects() ? a.outputVoltage() : 0;
@@ -587,6 +634,7 @@ public class TileConnector extends TileEntity
             info.collectVoltage = p.collectVoltage;
             info.collectAmperage = p.collectAmperage;
             info.target = p.targetName;
+            info.unitTag = p.unitTag;
             info.cable = p.adapter != null && p.adapter.isCable();
             info.devices = p.adapter != null ? p.adapter.deviceCount() : 0;
             info.at = p.adapter != null ? p.adapter.devicePos() : null;
@@ -607,12 +655,16 @@ public class TileConnector extends TileEntity
         if (voltage <= 0 || amperage <= 0 || Settlement.supplying) return 0;
         Port p = ports[side.ordinal()];
         if (!p.collects()) return 0;
+        long tick = ServerEvents.tick();
+        // the cable's machines first: GT hands the packet on to them
+        if (!p.mayTakeIn(tick) || p.adapter != null && p.adapter.othersTake(voltage)) return 0;
         p.ensureCollectCapacityFor(Port.mul(voltage, amperage));
         long amps = Math.min(amperage, p.collectRoom() / voltage);
         if (amps <= 0) return 0;
         long eu = amps * voltage;
         p.collected += eu;
         p.tickIn += eu;
+        p.lastInTick = tick;
         return amps;
     }
 
@@ -780,50 +832,57 @@ public class TileConnector extends TileEntity
         return side != ForgeDirection.UNKNOWN && ports[side.ordinal()].mode != PortMode.OFF;
     }
 
+    /**
+     * RF pushed in by a generator, an engine, a capacitor bank or a conduit. A face that does not collect refuses, but
+     * an RF device pushing at it is a generator: the face is resolved again and turns to input (see
+     * {@link RFAdapter}).
+     */
     @Override
     public int receiveEnergy(ForgeDirection side, int maxRF, boolean simulate) {
         if (!live || side == ForgeDirection.UNKNOWN || maxRF <= 0) return 0;
         Port p = ports[side.ordinal()];
-        if (!rfFace(p) || !p.collects()) return 0;
-        long rate = Math.max(1, GregTechAPI.mRFtoEU);
-        long acceptRf = Math.min(maxRF, p.collectRoom() * 100 / rate);
-        long eu = acceptRf * rate / 100;
-        if (eu <= 0) return 0;
+        if (!rfFace(p)) return 0;
+        if (!p.collects()) {
+            if (p.adapter instanceof RFAdapter rf && rf.notePush()) needsResolve = true;
+            return 0;
+        }
+        int accept = RF.clampInt(Math.min(maxRF, RF.rfFor(p.collectRoom())));
+        if (accept <= 0) return 0;
         if (!simulate) {
+            long eu = p.rfCarry.toEu(accept);
             p.collected += eu;
             p.tickIn += eu;
         }
-        return (int) acceptRf;
+        return accept;
     }
 
+    /** Devices that pull RF (transfer nodes, some pipes) take it from a feeding face's buffer. */
     @Override
     public int extractEnergy(ForgeDirection side, int maxRF, boolean simulate) {
         if (!live || side == ForgeDirection.UNKNOWN || maxRF <= 0) return 0;
         Port p = ports[side.ordinal()];
         if (!rfFace(p) || !p.supplies()) return 0;
-        long rate = Math.max(1, GregTechAPI.mEUtoRF);
-        long giveRf = Math.min(maxRF, Math.max(0, p.supply) * rate / 100);
-        long eu = (giveRf * 100 + rate - 1) / rate;
+        int giveRf = RF.clampInt(Math.min(maxRF, RF.euToRf(Math.max(0, p.supply))));
         if (giveRf <= 0) return 0;
         if (!simulate) {
-            p.supply = Math.max(0, p.supply - eu);
+            long eu = Math.min(p.supply, RF.rfCost(giveRf));
+            p.supply -= eu;
             p.tickOut += eu;
         }
-        return (int) giveRf;
+        return giveRf;
     }
 
     @Override
     public int getEnergyStored(ForgeDirection side) {
         if (side == ForgeDirection.UNKNOWN) return 0;
-        return (int) Math.min(Integer.MAX_VALUE, ports[side.ordinal()].supply * Math.max(1, GregTechAPI.mEUtoRF) / 100);
+        return RF.clampInt(RF.euToRf(Math.max(0, ports[side.ordinal()].supply)));
     }
 
     @Override
     public int getMaxEnergyStored(ForgeDirection side) {
         if (side == ForgeDirection.UNKNOWN) return 0;
         Port p = ports[side.ordinal()];
-        return (int) Math
-            .min(Integer.MAX_VALUE, Math.max(p.supplyCap, p.collectCap) * Math.max(1, GregTechAPI.mEUtoRF) / 100);
+        return RF.clampInt(RF.euToRf(Math.max(p.supplyCap, p.collectCap)));
     }
 
     // ------------------------------------------------------------------ steam (Forge fluids)

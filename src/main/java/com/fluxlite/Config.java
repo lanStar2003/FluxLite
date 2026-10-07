@@ -222,7 +222,7 @@ public final class Config {
             (int) rfNominalVoltage,
             1,
             Integer.MAX_VALUE,
-            "EU/t one RF port moves at most per tick (before conversion).");
+            "EU/t one RF face (or AE2 face) moves at most per tick, before conversion. RF rates come from GregTech's config; collecting RF never pays more EU than feeding it costs.");
         ic2MaxPacketsPerTick = c.getInt(
             "ic2MaxPacketsPerTick",
             CAT_COMPAT,

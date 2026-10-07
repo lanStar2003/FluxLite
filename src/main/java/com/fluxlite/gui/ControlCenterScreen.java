@@ -662,7 +662,7 @@ public class ControlCenterScreen extends UiScreen {
         int role = r.getByte("r");
         rolePill(c, x + col[1], y + 5.5f, role, st);
         if (r.getBoolean("stm")) text(c, tr("fluxlite.gui.steam"), x + col[2], y + 7, Theme.STEAM);
-        else text(c, Fmt.tier(r.getLong("v")), x + col[2], y + 7, Theme.LABEL2);
+        else text(c, r.hasKey("u") ? r.getString("u") : Fmt.tier(r.getLong("v")), x + col[2], y + 7, Theme.LABEL2);
         String now;
         int nowColor;
         if (role == 3) {
@@ -858,7 +858,21 @@ public class ControlCenterScreen extends UiScreen {
     private void alerts(Canvas c, float x, float y, float w, float h) {
         NBTTagList list = data.getTagList("alertList", 10);
         float listH = h;
-        if (list.tagCount() == 0) {
+        if (!data.getBoolean("alertsOn")) {
+            // a bell, crossed out
+            float cxx = x + w / 2, cyy = y + listH / 2 - 18;
+            c.circle(cxx, cyy, 11, Theme.withAlpha(Theme.LABEL3, 0x33));
+            c.round(cxx - 4.5f, cyy - 5, 9, 8, 4, Theme.LABEL2);
+            c.fill(cxx - 6, cyy + 2, 12, 1.6f, Theme.LABEL2);
+            c.circle(cxx, cyy + 5, 1.6f, Theme.LABEL2);
+            c.line(new float[] { cxx - 7, cxx + 7 }, new float[] { cyy - 7, cyy + 7 }, 1.6f, Theme.LABEL2);
+            String t = tr("fluxlite.gui.alerts_off");
+            bold(c, t, cxx - c.width(t, 1) / 2, cyy + 18, Theme.LABEL);
+            textCenter(c, tr("fluxlite.gui.alerts_off.sub"), cxx, cyy + 30, Theme.LABEL3, 1);
+            String b = tr("fluxlite.gui.alerts_turn_on");
+            float bw = c.width(b, 1) + 24;
+            button(c, cxx - bw / 2, cyy + 44, bw, 16, b, Theme.BLUE, () -> action(Kinds.ACT_ALERTS));
+        } else if (list.tagCount() == 0) {
             float cyy = y + listH / 2 - 12;
             c.circle(x + w / 2, cyy, 11, Theme.withAlpha(Theme.GREEN, 0x33));
             c.line(
@@ -898,23 +912,28 @@ public class ControlCenterScreen extends UiScreen {
 
     private void settings(Canvas c, float x, float y, float w, float h) {
         boolean owner = data.getBoolean("ccOwner");
-        // notifications: chat is the team's, the redstone output belongs to the block
+        // notifications: alerts and chat are the team's, the redstone output belongs to the block
         text(c, tr("fluxlite.gui.notifications"), x + 10, y, Theme.LABEL3);
         float cy = y + 11;
-        int rows = hand ? 1 : 2;
+        int rows = hand ? 2 : 3;
+        boolean alertsOn = data.getBoolean("alertsOn");
         card(c, x, cy, w, rows * SET_ROW);
-        text(c, tr("fluxlite.gui.chat"), x + 10, cy + 7, Theme.LABEL);
-        toggle(c, x + w - 32, cy + 4.5f, data.getBoolean("chat"), () -> action(Kinds.ACT_CHAT));
+        float aw = text(c, tr("fluxlite.gui.alerts_on"), x + 10, cy + 7, Theme.LABEL);
+        text(c, fit(c, tr("fluxlite.gui.alerts_on.sub"), w - aw - 56), x + 10 + aw + 6, cy + 7, Theme.LABEL3);
+        toggle(c, x + w - 32, cy + 4.5f, alertsOn, () -> action(Kinds.ACT_ALERTS));
+        float ry = cy + SET_ROW;
+        separator(c, x, ry, w);
+        text(c, tr("fluxlite.gui.chat"), x + 10, ry + 7, alertsOn ? Theme.LABEL : Theme.LABEL3);
+        if (alertsOn) toggle(c, x + w - 32, ry + 4.5f, data.getBoolean("chat"), () -> action(Kinds.ACT_CHAT));
+        else textRight(c, tr("fluxlite.gui.needs_alerts"), x + w - 10, ry + 7, Theme.LABEL3);
         if (!hand) {
-            separator(c, x, cy + SET_ROW, w);
-            text(c, tr("fluxlite.gui.redstone"), x + 10, cy + SET_ROW + 7, owner ? Theme.LABEL : Theme.LABEL3);
-            if (owner) toggle(
-                c,
-                x + w - 32,
-                cy + SET_ROW + 4.5f,
-                data.getBoolean("redstone"),
-                () -> action(Kinds.ACT_REDSTONE));
-            else textRight(c, tr("fluxlite.gui.owner_only"), x + w - 10, cy + SET_ROW + 7, Theme.LABEL3);
+            ry += SET_ROW;
+            separator(c, x, ry, w);
+            boolean rs = owner && alertsOn;
+            text(c, tr("fluxlite.gui.redstone"), x + 10, ry + 7, rs ? Theme.LABEL : Theme.LABEL3);
+            if (!owner) textRight(c, tr("fluxlite.gui.owner_only"), x + w - 10, ry + 7, Theme.LABEL3);
+            else if (!alertsOn) textRight(c, tr("fluxlite.gui.needs_alerts"), x + w - 10, ry + 7, Theme.LABEL3);
+            else toggle(c, x + w - 32, ry + 4.5f, data.getBoolean("redstone"), () -> action(Kinds.ACT_REDSTONE));
         }
         cy += rows * SET_ROW + 16;
 
@@ -934,7 +953,7 @@ public class ControlCenterScreen extends UiScreen {
         else if (owner) toggle(c, x + w - 32, cy + 4.5f, data.getBoolean("holo"), () -> action(Kinds.ACT_HOLOGRAM));
         else textRight(c, tr("fluxlite.gui.owner_only"), x + w - 10, cy + 7, Theme.LABEL3);
 
-        float ry = cy + SET_ROW;
+        ry = cy + SET_ROW;
         separator(c, x, ry, w);
         text(c, tr("fluxlite.gui.hologram.size"), x + 10, ry + 7, editable ? Theme.LABEL : Theme.LABEL3);
         String[] sizes = { tr("fluxlite.gui.size.0"), tr("fluxlite.gui.size.1"), tr("fluxlite.gui.size.2"),

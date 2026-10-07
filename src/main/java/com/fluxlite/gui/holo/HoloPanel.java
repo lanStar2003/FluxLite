@@ -18,8 +18,9 @@ public final class HoloPanel {
     public static final float W = 168, H = 122;
 
     static final int CYAN = Theme.TEAL;
-    private static final int GLASS_TOP = 0xA0102434, GLASS_BOTTOM = 0x800A1622;
-    private static final int SOLID_TOP = 0xF6122636, SOLID_BOTTOM = 0xF60C1824;
+    // the glass stays dark enough to read in daylight; the solid panel lets nothing through
+    private static final int GLASS_TOP = 0xBC102434, GLASS_BOTTOM = 0xA40A1622;
+    private static final int SOLID_TOP = 0xFF122636, SOLID_BOTTOM = 0xFF0C1824;
     private static final float R = 6;
 
     /** Translations; arguments are formatted like {@code String.format}. */
@@ -58,8 +59,11 @@ public final class HoloPanel {
             c.round(x, y, w, h, r, Theme.withAlpha(CYAN, 0xD0));
             return;
         }
+        // the panel is a surface (so shaders do not take it for the sky behind it); the rest is drawn on it
+        c.surface(true);
         if (opaque) c.roundGradient(x, y, w, h, r, SOLID_TOP, SOLID_BOTTOM);
         else c.roundGradient(x, y, w, h, r, GLASS_TOP, GLASS_BOTTOM);
+        c.surface(false);
         c.roundStroke(x, y, w, h, r, 0.6f, Theme.withAlpha(CYAN, 0x99));
         int scan = opaque ? 0x0864D2FF : 0x0C64D2FF;
         for (float yy = y + 3; yy < y + h - 2; yy += 2.5f) c.fill(x + 2, yy, w - 4, 0.3f, scan);

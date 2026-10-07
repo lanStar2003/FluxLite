@@ -5,6 +5,7 @@ import java.util.List;
 import net.minecraft.tileentity.TileEntity;
 
 import com.fluxlite.core.MachineSample;
+import com.fluxlite.core.PortRole;
 
 /**
  * Uniform view of whatever sits next to a connector face. All amounts are EU; RF adapters convert internally. Steam
@@ -15,7 +16,10 @@ public interface EnergyAdapter {
     enum Kind {
         GT_MACHINE,
         GT_CABLE,
+        /** An EU sink that is not a GT machine (AE2, Railcraft): packets go straight in, sized to what it takes. */
+        GT_SINK,
         IC2,
+        /** RF devices and RF conduits; the connector's CoFH methods only serve faces of this kind. */
         RF,
         STEAM
     }
@@ -43,6 +47,24 @@ public interface EnergyAdapter {
 
     /** The device can give energy through this face. */
     boolean canSend();
+
+    /**
+     * Direction the face takes by itself. By default from {@link #canReceive} and {@link #canSend}: a device that does
+     * both (an energy storage) is drained into the network. Only GT cables go both ways (see {@link GTCableAdapter}).
+     */
+    default PortRole autoRole() {
+        boolean recv = canReceive(), send = canSend();
+        if (recv && send) return PortRole.INPUT;
+        return recv ? PortRole.OUTPUT : send ? PortRole.INPUT : PortRole.NONE;
+    }
+
+    /**
+     * What the GUIs show instead of a GT voltage tier: null for the tier, "RF" for RF faces, "" for nothing (sinks
+     * that take any voltage).
+     */
+    default String unitTag() {
+        return null;
+    }
 
     /** True when the voltage/amperage needed to feed the device safely could be read. */
     boolean hasInputSpec();
@@ -105,4 +127,20 @@ public interface EnergyAdapter {
 
     /** Called periodically to refresh cached data (cable scans). */
     default void refresh() {}
+
+    /**
+     * Cables: a machine on the cable would take a packet of {@code voltage} offered to the connector right now. The
+     * connector leaves it to the machine (the cable's generators feed its machines first).
+     */
+    default boolean othersTake(long voltage) {
+        return false;
+    }
+
+    /** Cables: scan again at the next {@link #refresh}. */
+    default void invalidateScan() {}
+
+    /** Cables: the block at this position ({@code MachineSample.posKey}) is one of the cables or a device on them. */
+    default boolean covers(long pos) {
+        return false;
+    }
 }

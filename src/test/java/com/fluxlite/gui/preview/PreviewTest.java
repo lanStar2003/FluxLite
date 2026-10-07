@@ -113,9 +113,16 @@ class PreviewTest {
         l.appendTag(face(0, TileConnector.VIS_IDLE, PortRole.NONE, "高压燃煤锅炉", 0, 0, 0));
         l.appendTag(face(1, TileConnector.VIS_OUT, PortRole.OUTPUT, "UV能源仓", 524_288, 0, 1_048_576));
         l.appendTag(face(2, TileConnector.VIS_IN, PortRole.INPUT, "UHV动力仓", 2_097_152, 8_388_608, 0));
-        l.appendTag(face(3, TileConnector.VIS_BOTH, PortRole.BOTH, "装配线 +5", 524_288, 0, 1_048_576));
+        NBTTagCompound mixed = face(3, TileConnector.VIS_BOTH, PortRole.BOTH, "装配线 +5", 524_288, 0, 1_048_576);
+        mixed.setBoolean("choose", true);
+        l.appendTag(mixed);
         l.appendTag(face(4, TileConnector.VIS_IN, PortRole.INPUT, "基础蒸汽涡轮", 32, 24, 0));
-        l.appendTag(face(5, TileConnector.VIS_NONE, PortRole.NONE, "", 0, 0, 0));
+        // an EnderIO conduit, fixed to output by the player
+        NBTTagCompound conduit = face(5, TileConnector.VIS_OUT, PortRole.OUTPUT, "SAG磨粉机 +2", 0, 0, 1_440);
+        conduit.setString("unit", "RF");
+        conduit.setBoolean("choose", true);
+        conduit.setByte("fixed", (byte) PortRole.OUTPUT.ordinal());
+        l.appendTag(conduit);
         t.setTag("faces", l);
         NBTTagList s = new NBTTagList();
         s.appendTag(steamFace(0, TileConnector.VIS_IN, PortRole.INPUT, "高压燃煤锅炉", 1_200, 0));
@@ -295,6 +302,7 @@ class PreviewTest {
     static NBTTagCompound alerts(boolean any) {
         NBTTagCompound t = new NBTTagCompound();
         common(t, 2);
+        t.setBoolean("alertsOn", true);
         NBTTagList l = new NBTTagList();
         if (any) {
             l.appendTag(new Alert(Alert.Type.ETA_SHORT, 0, -1, "8m 20s").write());
@@ -304,10 +312,24 @@ class PreviewTest {
         return t;
     }
 
+    static NBTTagCompound alertsOff() {
+        NBTTagCompound t = new NBTTagCompound();
+        common(t, 2);
+        t.setInteger("alerts", 0);
+        t.setTag("alertList", new NBTTagList());
+        return t;
+    }
+
     static NBTTagCompound settings(boolean hand) {
+        return settings(hand, true);
+    }
+
+    static NBTTagCompound settings(boolean hand, boolean alertsOn) {
         NBTTagCompound t = new NBTTagCompound();
         common(t, 3);
         t.setBoolean("hand", hand);
+        t.setBoolean("alertsOn", alertsOn);
+        if (!alertsOn) t.setInteger("alerts", 0);
         t.setBoolean("chat", true);
         if (hand) return t;
         t.setBoolean("redstone", false);
@@ -379,11 +401,23 @@ class PreviewTest {
             ok.onData(alerts(false));
             render(ok, "cc_alerts_ok_" + sz, w, h, s, -1, -1);
 
+            ControlCenterScreen off = new ControlCenterScreen(0, 0, 0, 0);
+            off.attach(host);
+            select(off, 2);
+            off.onData(alertsOff());
+            render(off, "cc_alerts_off_" + sz, w, h, s, -1, -1);
+
             ControlCenterScreen set = new ControlCenterScreen(0, 0, 0, 0);
             set.attach(host);
             select(set, 3);
             set.onData(settings(false));
             render(set, "cc_settings_" + sz, w, h, s, -1, -1);
+
+            ControlCenterScreen setOff = new ControlCenterScreen(0, 0, 0, 0);
+            setOff.attach(host);
+            select(setOff, 3);
+            setOff.onData(settings(false, false));
+            render(setOff, "cc_settings_off_" + sz, w, h, s, -1, -1);
 
             ControlCenterScreen hand = ControlCenterScreen.handheld();
             hand.attach(host);

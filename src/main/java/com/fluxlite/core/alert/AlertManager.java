@@ -27,7 +27,10 @@ import com.fluxlite.core.stats.Bucket;
 import com.fluxlite.core.stats.Series;
 import com.fluxlite.util.Fmt;
 
-/** Re-evaluates every team's alerts once per second and sends rate-limited chat notifications. */
+/**
+ * Re-evaluates the alerts of every team that switched them on, once per second, and sends rate-limited chat
+ * notifications.
+ */
 public final class AlertManager {
 
     private AlertManager() {}
@@ -43,7 +46,7 @@ public final class AlertManager {
         for (TeamData team : reg.teams()) {
             List<ConnectorRecord> records = byTeam.get(team.leader);
             team.alerts.clear();
-            if (records == null || records.isEmpty()) continue;
+            if (!team.alertsOn || records == null || records.isEmpty()) continue;
             teamAlerts(team, team.alerts);
             for (ConnectorRecord r : records) connectorAlerts(r, team.alerts);
             notifyChat(team, nowMs);

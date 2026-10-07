@@ -11,6 +11,9 @@ import cpw.mods.fml.relauncher.SideOnly;
 /**
  * {@link Canvas} on top of the Tessellator and Minecraft's font renderer. Works in GUI space and, for the floating
  * display, in the world (see {@link #world}): it only draws at z = 0 of the current matrix.
+ * <p>
+ * In the world every vertex gets a normal pointing up (the panel is drawn upside down, so that is -y here): shader
+ * packs light geometry by its normal, and up is the side they light fully, whatever way the panel faces.
  */
 @SideOnly(Side.CLIENT)
 public final class McCanvas implements Canvas {
@@ -62,7 +65,34 @@ public final class McCanvas implements Canvas {
     public void end() {
         GL11.glShadeModel(GL11.GL_FLAT);
         GL11.glPopAttrib();
+        restoreTexture();
         GL11.glColor4f(1, 1, 1, 1);
+    }
+
+    /**
+     * Switches texturing back on after a {@code glPopAttrib}. The pop restores OpenGL, but Angelica only tells the
+     * shader pipeline when texturing is switched through glEnable / glDisable; without this, whatever is drawn next
+     * (chests, signs...) samples no texture and comes out white.
+     */
+    public static void restoreTexture() {
+        GL11.glEnable(GL11.GL_TEXTURE_2D);
+    }
+
+    @Override
+    public void surface(boolean solid) {
+        if (!world) return;
+        GL11.glDepthMask(solid);
+        if (solid) GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
+        else {
+            // drawn on the surface's plane: pulled towards the eye so it wins the depth test
+            GL11.glEnable(GL11.GL_POLYGON_OFFSET_FILL);
+            GL11.glPolygonOffset(-1, -4);
+        }
+    }
+
+    private void start(Tessellator t, int mode) {
+        t.startDrawing(mode);
+        if (world) t.setNormal(0, -1, 0);
     }
 
     private void color(Tessellator t, int argb) {
@@ -84,7 +114,7 @@ public final class McCanvas implements Canvas {
         if (w <= 0 || h <= 0) return;
         shapes();
         Tessellator t = Tessellator.instance;
-        t.startDrawingQuads();
+        start(t, GL11.GL_QUADS);
         color(t, bottom);
         t.addVertex(x, y + h, 0);
         t.addVertex(x + w, y + h, 0);
@@ -126,7 +156,7 @@ public final class McCanvas implements Canvas {
         shapes();
         int n = perimeter(x, y, w, h, r, px, py, segments(r));
         Tessellator t = Tessellator.instance;
-        t.startDrawing(GL11.GL_TRIANGLE_FAN);
+        start(t, GL11.GL_TRIANGLE_FAN);
         color(t, Theme.mix(top, bottom, 0.5f));
         t.addVertex(x + w / 2, y + h / 2, 0);
         for (int i = 0; i <= n; i++) {
@@ -145,7 +175,7 @@ public final class McCanvas implements Canvas {
         int n = perimeter(x, y, w, h, r, px, py, seg);
         perimeter(x + th, y + th, w - 2 * th, h - 2 * th, Math.max(0, r - th), qx, qy, seg);
         Tessellator t = Tessellator.instance;
-        t.startDrawing(GL11.GL_TRIANGLE_STRIP);
+        start(t, GL11.GL_TRIANGLE_STRIP);
         color(t, argb);
         for (int i = 0; i <= n; i++) {
             int k = i % n;
@@ -167,7 +197,7 @@ public final class McCanvas implements Canvas {
         shapes();
         float hw = width / 2;
         Tessellator t = Tessellator.instance;
-        t.startDrawingQuads();
+        start(t, GL11.GL_QUADS);
         color(t, argb);
         for (int i = 0; i < n - 1; i++) {
             float dx = xs[i + 1] - xs[i], dy = ys[i + 1] - ys[i];
@@ -190,7 +220,7 @@ public final class McCanvas implements Canvas {
         if (n < 2) return;
         shapes();
         Tessellator t = Tessellator.instance;
-        t.startDrawing(GL11.GL_TRIANGLE_STRIP);
+        start(t, GL11.GL_TRIANGLE_STRIP);
         for (int i = 0; i < n; i++) {
             color(t, top);
             t.addVertex(xs[i], ys[i], 0);
@@ -207,6 +237,7 @@ public final class McCanvas implements Canvas {
         // the font renderer treats an alpha below 4 as fully opaque
         if ((argb >>> 24) < 4) return width(s, scale);
         GL11.glEnable(GL11.GL_TEXTURE_2D);
+        if (world) GL11.glNormal3f(0, -1, 0);
         GL11.glPushMatrix();
         GL11.glTranslatef(x, y, 0);
         if (scale != 1) GL11.glScalef(scale, scale, 1);
