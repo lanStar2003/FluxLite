@@ -4,12 +4,14 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraftforge.common.ForgeChunkManager;
 import net.minecraftforge.common.MinecraftForge;
 
+import com.fluxlite.backend.SteamNetwork;
 import com.fluxlite.block.ModBlocks;
 import com.fluxlite.block.WrenchActions;
 import com.fluxlite.chunk.ChunkLoadManager;
 import com.fluxlite.command.CommandFluxLite;
 import com.fluxlite.core.ServerEvents;
 import com.fluxlite.core.registry.Registry;
+import com.fluxlite.item.ModItems;
 import com.fluxlite.net.Net;
 import com.fluxlite.recipe.Recipes;
 
@@ -29,6 +31,7 @@ public class CommonProxy {
     public void preInit(FMLPreInitializationEvent event) {
         Config.load(event.getSuggestedConfigurationFile());
         ModBlocks.register();
+        ModItems.register();
         Net.init();
     }
 
@@ -61,16 +64,21 @@ public class CommonProxy {
     public void serverStopping(FMLServerStoppingEvent event) {
         Registry reg = Registry.get();
         if (reg != null) reg.markDirty();
+        SteamNetwork steam = SteamNetwork.get();
+        if (steam != null) steam.markDirty();
     }
 
     public void serverStopped(FMLServerStoppedEvent event) {
         ServerEvents.reset();
         ChunkLoadManager.INSTANCE.reset();
         Registry.reset();
+        SteamNetwork.reset();
     }
 
     /** Opens a client GUI; no-op on a dedicated server. */
     public void openConnectorGui(EntityPlayer player, int x, int y, int z) {}
 
     public void openControlCenterGui(EntityPlayer player, int x, int y, int z) {}
+
+    public void openTerminalGui(EntityPlayer player) {}
 }

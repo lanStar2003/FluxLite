@@ -14,17 +14,20 @@ import com.fluxlite.util.Fmt;
 import com.fluxlite.util.Longs;
 
 /**
- * Team dashboard. Three tabs (overview, devices, alerts) and a detail sheet for one device. Live numbers are the
- * current EU/t (the last second, shown at once when a flow starts); only the 1 h / 24 h charts are per-minute /
- * per-hour averages. The device list can be narrowed by direction, status, voltage, connector and kind.
+ * Team dashboard, on a control center or on the handheld terminal. Four tabs (overview, devices, alerts, settings)
+ * and a detail sheet for one device. Live numbers are the current EU/t (the last second, shown at once when a flow
+ * starts); only the 1 h / 24 h charts are per-minute / per-hour averages. The device list can be narrowed by
+ * direction, status, voltage, connector and kind. Steam is shown in litres next to the EU.
  */
 public class ControlCenterScreen extends UiScreen {
 
-    public static final int TAB_OVERVIEW = 0, TAB_DEVICES = 1, TAB_ALERTS = 2;
+    public static final int TAB_OVERVIEW = 0, TAB_DEVICES = 1, TAB_ALERTS = 2, TAB_SETTINGS = 3;
     public static final int SORT_NAME = 0, SORT_ROLE = 1, SORT_TIER = 2, SORT_NOW = 3, SORT_PEAK = 4, SORT_TOTAL = 5;
     private static final int ROW = 22;
 
     private final int dim, bx, by, bz;
+    /** Opened from the handheld terminal: no block behind it. */
+    private final boolean hand;
     private NBTTagCompound data;
     private int tab = TAB_OVERVIEW;
     private int range; // overview chart: 0 live, 1 hour, 2 day
@@ -44,10 +47,20 @@ public class ControlCenterScreen extends UiScreen {
     });
 
     public ControlCenterScreen(int dim, int x, int y, int z) {
+        this(dim, x, y, z, false);
+    }
+
+    private ControlCenterScreen(int dim, int x, int y, int z, boolean hand) {
         this.dim = dim;
         this.bx = x;
         this.by = y;
         this.bz = z;
+        this.hand = hand;
+    }
+
+    /** The dashboard of the handheld terminal. */
+    public static ControlCenterScreen handheld() {
+        return new ControlCenterScreen(0, 0, 0, 0, true);
     }
 
     // ------------------------------------------------------------------ networking
@@ -58,6 +71,7 @@ public class ControlCenterScreen extends UiScreen {
         t.setInteger("x", bx);
         t.setInteger("y", by);
         t.setInteger("z", bz);
+        if (hand) t.setBoolean("hand", true);
         if (team != null) t.setString("team", team);
         return t;
     }
@@ -82,8 +96,13 @@ public class ControlCenterScreen extends UiScreen {
     }
 
     private void action(int action) {
+        action(action, 0);
+    }
+
+    private void action(int action, int value) {
         NBTTagCompound t = pos();
         t.setInteger("action", action);
+        t.setInteger("value", value);
         host.send(Kinds.CC_ACTION, t);
         request();
     }
@@ -145,7 +164,12 @@ public class ControlCenterScreen extends UiScreen {
         window(c, x, y, w, h);
         closeButton(c, x + w - 13, y + 13);
 
-        bold(c, tr("tile.fluxlite.control_center.name"), x + 14, y + 10, Theme.LABEL);
+        bold(
+            c,
+            tr(hand ? "item.fluxlite.terminal.name" : "tile.fluxlite.control_center.name"),
+            x + 14,
+            y + 10,
+            Theme.LABEL);
         if (data != null && data.getBoolean("ok")) {
             String sub = tr(
                 "fluxlite.gui.cc.subtitle",
@@ -162,8 +186,8 @@ public class ControlCenterScreen extends UiScreen {
             }
         }
         String[] tabs = { tr("fluxlite.gui.tab.overview"), tr("fluxlite.gui.tab.devices"),
-            tr("fluxlite.gui.tab.alerts") };
-        int[] badges = { 0, 0, data == null ? 0 : data.getInteger("alerts") };
+            tr("fluxlite.gui.tab.alerts"), tr("fluxlite.gui.tab.settings") };
+        int[] badges = { 0, 0, data == null ? 0 : data.getInteger("alerts"), 0 };
         float segW = segmentedWidth(c, tabs, badges);
         segmented(c, x + w - 28 - segW, y + 12, tabs, tab, this::go, badges);
 
@@ -179,6 +203,7 @@ public class ControlCenterScreen extends UiScreen {
         switch (tab) {
             case TAB_DEVICES -> devices(c, cx, cy, cw, ch);
             case TAB_ALERTS -> alerts(c, cx, cy, cw, ch);
+            case TAB_SETTINGS -> settings(c, cx, cy, cw, ch);
             default -> overview(c, cx, cy, cw, ch);
         }
         menus(c);
@@ -316,10 +341,17 @@ public class ControlCenterScreen extends UiScreen {
             etaText,
             eta >= 0 && eta < 600 ? Theme.RED : Theme.LABEL3);
 
+        // the steam network, when the team uses it
+        float chy = y + sh + gap;
+        if (data.getBoolean("steamOn")) {
+            steamStrip(c, x, chy, w, 22);
+            chy += 22 + gap;
+        }
+
         // top lists get three rows when there is room, two otherwise
-        int topRows = h >= 230 ? 3 : 2;
+        int topRows = h - (chy - y) >= 178 ? 3 : 2;
         float listH = 24 + topRows * 15;
-        float chy = y + sh + gap, chh = h - sh - gap - listH - gap;
+        float chh = h - (chy - y) - listH - gap;
         card(c, x, chy, w, chh);
         float lx = x + 10 + bold(c, tr("fluxlite.gui.flow"), x + 10, chy + 8, Theme.LABEL) + 10;
         lx = legend(c, lx, chy + 8, Theme.INPUT, tr("fluxlite.gui.input"));
@@ -350,6 +382,26 @@ public class ControlCenterScreen extends UiScreen {
             tr("fluxlite.gui.top_in"),
             data.getTagList("topIn", 10),
             Theme.INPUT);
+    }
+
+    /** The team's steam network in one line; opens its detail sheet. */
+    private void steamStrip(Canvas c, float x, float y, float w, float h) {
+        boolean hov = hover(x, y, w, h);
+        c.round(x, y, w, h, Theme.RADIUS_CARD, hov ? Theme.CARD_HOVER : Theme.CARD);
+        ConnectorScreen.cloud(c, x + 12, y + h / 2);
+        float ty = y + (h - 8) / 2;
+        float tx = x + 22 + bold(c, tr("fluxlite.gui.steam_net"), x + 22, ty, Theme.LABEL) + 12;
+        tx += text(c, tr("fluxlite.gui.stored"), tx, ty, Theme.LABEL3) + 4;
+        tx += text(c, Fmt.si(big(data.getString("steam"))) + " L", tx, ty, Theme.LABEL) + 14;
+        long in = data.getLong("sin"), out = data.getLong("sout");
+        c.circle(tx + 2, ty + 3.5f, 2, Theme.INPUT);
+        tx += 7 + text(c, Fmt.si(in) + " L/t", tx + 7, ty, Theme.LABEL2) + 12;
+        c.circle(tx + 2, ty + 3.5f, 2, Theme.OUTPUT);
+        text(c, Fmt.si(out) + " L/t", tx + 7, ty, Theme.LABEL2);
+        long net = in - out;
+        String n = (net > 0 ? "+" : "") + Fmt.si(net) + " L/t";
+        textRight(c, n, x + w - 10, ty, net > 0 ? Theme.GREEN : net < 0 ? Theme.RED : Theme.LABEL2);
+        onClick(x, y, w, h, () -> openDetail("ts"));
     }
 
     private void top(Canvas c, float x, float y, float w, float h, int maxRows, String title, NBTTagList rows,
@@ -473,7 +525,8 @@ public class ControlCenterScreen extends UiScreen {
                 refilter();
             }) + 5;
 
-        String[] kindOpts = { any, tr("fluxlite.gui.kind.0"), tr("fluxlite.gui.kind.1"), tr("fluxlite.gui.kind.2") };
+        String[] kindOpts = { any, tr("fluxlite.gui.kind.0"), tr("fluxlite.gui.kind.1"), tr("fluxlite.gui.kind.2"),
+            tr("fluxlite.gui.kind.3") };
         chip(
             c,
             fx,
@@ -551,6 +604,11 @@ public class ControlCenterScreen extends UiScreen {
         bx += 7 + text(c, Fmt.si(data.getLong("sumIn")) + " EU/t", bx + 7, by, Theme.LABEL2) + 10;
         c.circle(bx + 2, by + 3.5f, 2, Theme.OUTPUT);
         bx += 7 + text(c, Fmt.si(data.getLong("sumOut")) + " EU/t", bx + 7, by, Theme.LABEL2);
+        if (data.getBoolean("hasSteam")) {
+            ConnectorScreen.cloud(c, bx + 14, by + 3.5f);
+            String st = "+" + Fmt.si(data.getLong("sumSin")) + " −" + Fmt.si(data.getLong("sumSout")) + " L/t";
+            bx += 20 + text(c, st, bx + 20, by, Theme.LABEL2);
+        }
         String hint = tr("fluxlite.gui.devices_hint");
         if (bx + 12 + c.width(hint, 1) < x + w) textRight(c, hint, x + w - 2, by, Theme.LABEL3);
     }
@@ -603,7 +661,8 @@ public class ControlCenterScreen extends UiScreen {
         text(c, fit(c, sub.toString(), nameW), x + col[0], y + 12, Theme.LABEL3);
         int role = r.getByte("r");
         rolePill(c, x + col[1], y + 5.5f, role, st);
-        text(c, Fmt.tier(r.getLong("v")), x + col[2], y + 7, Theme.LABEL2);
+        if (r.getBoolean("stm")) text(c, tr("fluxlite.gui.steam"), x + col[2], y + 7, Theme.STEAM);
+        else text(c, Fmt.tier(r.getLong("v")), x + col[2], y + 7, Theme.LABEL2);
         String now;
         int nowColor;
         if (role == 3) {
@@ -641,8 +700,11 @@ public class ControlCenterScreen extends UiScreen {
             return;
         }
         boolean sampled = data.getBoolean("sampled");
+        boolean steam = data.getBoolean("steam");
+        String rate = steam ? "L/t" : "EU/t", amount = steam ? "L" : "EU";
         String name = data.getString("name");
         if (name.equals("@team")) name = tr("fluxlite.gui.team_total");
+        else if (name.equals("@steam")) name = tr("fluxlite.gui.steam_net");
         boolean canLocate = data.hasKey("pos");
         float titleMax = w - 18 - (canLocate ? 70 : 0) - 40;
         float tw = bold(c, fit(c, (sampled ? "~ " : "") + name, titleMax), x + 18, y + 1, Theme.LABEL);
@@ -684,7 +746,7 @@ public class ControlCenterScreen extends UiScreen {
         long nowV = role == 2 ? data.getLong("no")
             : role == 1 ? data.getLong("ni") : data.getLong("ni") - data.getLong("no");
         String nowS = role == 3 && nowV > 0 ? "+" + Fmt.si(nowV) : Fmt.si(nowV);
-        stat(c, x, sy, sw, sh, tr("fluxlite.gui.d.now"), color, nowS, "EU/t", Theme.LABEL, specLine(), Theme.LABEL3);
+        stat(c, x, sy, sw, sh, tr("fluxlite.gui.d.now"), color, nowS, rate, Theme.LABEL, specLine(), Theme.LABEL3);
         long ago = data.getLong("peakAgo");
         stat(
             c,
@@ -695,7 +757,7 @@ public class ControlCenterScreen extends UiScreen {
             tr("fluxlite.gui.d.peak"),
             0,
             Fmt.si(data.getLong("peak")),
-            "EU/t",
+            rate,
             Theme.LABEL,
             ago >= 0 ? tr("fluxlite.gui.ago", Fmt.duration(ago)) : "-",
             Theme.LABEL3);
@@ -736,7 +798,7 @@ public class ControlCenterScreen extends UiScreen {
             tr("fluxlite.gui.d.total"),
             0,
             Fmt.si(big(data.getString("total"))),
-            "EU",
+            amount,
             Theme.LABEL,
             tr("fluxlite.gui.d.today", Fmt.si(big(data.getString("today")))),
             Theme.LABEL3);
@@ -795,8 +857,7 @@ public class ControlCenterScreen extends UiScreen {
 
     private void alerts(Canvas c, float x, float y, float w, float h) {
         NBTTagList list = data.getTagList("alertList", 10);
-        float settingsH = 3 * 22;
-        float listH = h - settingsH - 24;
+        float listH = h;
         if (list.tagCount() == 0) {
             float cyy = y + listH / 2 - 12;
             c.circle(x + w / 2, cyy, 11, Theme.withAlpha(Theme.GREEN, 0x33));
@@ -829,23 +890,72 @@ public class ControlCenterScreen extends UiScreen {
                 y + shown * 22 + 10,
                 Theme.LABEL3);
         }
-        float sy = y + h - settingsH;
-        text(c, tr("fluxlite.gui.notifications"), x + 10, sy - 12, Theme.LABEL3);
-        card(c, x, sy, w, settingsH);
-        text(c, tr("fluxlite.gui.chat"), x + 10, sy + 7, Theme.LABEL);
-        toggle(c, x + w - 32, sy + 4.5f, data.getBoolean("chat"), () -> action(Kinds.ACT_CHAT));
-        c.fill(x + 10, sy + 21.75f, w - 20, 0.5f, Theme.SEPARATOR);
+    }
+
+    // ------------------------------------------------------------------ settings
+
+    private static final float SET_ROW = 22;
+
+    private void settings(Canvas c, float x, float y, float w, float h) {
         boolean owner = data.getBoolean("ccOwner");
-        text(c, tr("fluxlite.gui.redstone"), x + 10, sy + 29, owner ? Theme.LABEL : Theme.LABEL3);
-        if (owner) toggle(c, x + w - 32, sy + 26.5f, data.getBoolean("redstone"), () -> action(Kinds.ACT_REDSTONE));
-        else textRight(c, tr("fluxlite.gui.owner_only"), x + w - 10, sy + 29, Theme.LABEL3);
-        c.fill(x + 10, sy + 43.75f, w - 20, 0.5f, Theme.SEPARATOR);
+        // notifications: chat is the team's, the redstone output belongs to the block
+        text(c, tr("fluxlite.gui.notifications"), x + 10, y, Theme.LABEL3);
+        float cy = y + 11;
+        int rows = hand ? 1 : 2;
+        card(c, x, cy, w, rows * SET_ROW);
+        text(c, tr("fluxlite.gui.chat"), x + 10, cy + 7, Theme.LABEL);
+        toggle(c, x + w - 32, cy + 4.5f, data.getBoolean("chat"), () -> action(Kinds.ACT_CHAT));
+        if (!hand) {
+            separator(c, x, cy + SET_ROW, w);
+            text(c, tr("fluxlite.gui.redstone"), x + 10, cy + SET_ROW + 7, owner ? Theme.LABEL : Theme.LABEL3);
+            if (owner) toggle(
+                c,
+                x + w - 32,
+                cy + SET_ROW + 4.5f,
+                data.getBoolean("redstone"),
+                () -> action(Kinds.ACT_REDSTONE));
+            else textRight(c, tr("fluxlite.gui.owner_only"), x + w - 10, cy + SET_ROW + 7, Theme.LABEL3);
+        }
+        cy += rows * SET_ROW + 16;
+
+        // the floating display of this control center
+        text(c, tr("fluxlite.gui.hologram"), x + 10, cy - 11, Theme.LABEL3);
+        if (hand) {
+            card(c, x, cy, w, SET_ROW);
+            text(c, fit(c, tr("fluxlite.gui.hand_settings"), w - 20), x + 10, cy + 7, Theme.LABEL3);
+            return;
+        }
         boolean allowed = data.getBoolean("holoAllowed");
-        float lw = text(c, tr("fluxlite.gui.hologram"), x + 10, sy + 51, owner && allowed ? Theme.LABEL : Theme.LABEL3);
-        text(c, tr("fluxlite.gui.hologram.sub"), x + 10 + lw + 6, sy + 51, Theme.LABEL3);
-        if (!allowed) textRight(c, tr("fluxlite.gui.hologram.off"), x + w - 10, sy + 51, Theme.LABEL3);
-        else if (owner) toggle(c, x + w - 32, sy + 48.5f, data.getBoolean("holo"), () -> action(Kinds.ACT_HOLOGRAM));
-        else textRight(c, tr("fluxlite.gui.owner_only"), x + w - 10, sy + 51, Theme.LABEL3);
+        boolean editable = owner && allowed;
+        card(c, x, cy, w, 3 * SET_ROW);
+        float lw = text(c, tr("fluxlite.gui.hologram.show"), x + 10, cy + 7, editable ? Theme.LABEL : Theme.LABEL3);
+        text(c, tr("fluxlite.gui.hologram.sub"), x + 10 + lw + 6, cy + 7, Theme.LABEL3);
+        if (!allowed) textRight(c, tr("fluxlite.gui.hologram.off"), x + w - 10, cy + 7, Theme.LABEL3);
+        else if (owner) toggle(c, x + w - 32, cy + 4.5f, data.getBoolean("holo"), () -> action(Kinds.ACT_HOLOGRAM));
+        else textRight(c, tr("fluxlite.gui.owner_only"), x + w - 10, cy + 7, Theme.LABEL3);
+
+        float ry = cy + SET_ROW;
+        separator(c, x, ry, w);
+        text(c, tr("fluxlite.gui.hologram.size"), x + 10, ry + 7, editable ? Theme.LABEL : Theme.LABEL3);
+        String[] sizes = { tr("fluxlite.gui.size.0"), tr("fluxlite.gui.size.1"), tr("fluxlite.gui.size.2"),
+            tr("fluxlite.gui.size.3") };
+        int size = Math.max(0, Math.min(3, data.getInteger("holoSize")));
+        if (editable) {
+            float sw = segmentedWidth(c, sizes);
+            segmented(c, x + w - 8 - sw, ry + 4, sizes, size, i -> action(Kinds.ACT_HOLO_SIZE, i));
+        } else textRight(c, sizes[size], x + w - 10, ry + 7, Theme.LABEL3);
+
+        ry += SET_ROW;
+        separator(c, x, ry, w);
+        float tw = text(c, tr("fluxlite.gui.hologram.glass"), x + 10, ry + 7, editable ? Theme.LABEL : Theme.LABEL3);
+        text(c, tr("fluxlite.gui.hologram.glass.sub"), x + 10 + tw + 6, ry + 7, Theme.LABEL3);
+        boolean glass = !data.getBoolean("holoOpaque");
+        if (editable) toggle(c, x + w - 32, ry + 4.5f, glass, () -> action(Kinds.ACT_HOLO_OPAQUE));
+        else textRight(c, tr(glass ? "fluxlite.gui.on" : "fluxlite.gui.off"), x + w - 10, ry + 7, Theme.LABEL3);
+    }
+
+    private static void separator(Canvas c, float x, float y, float w) {
+        c.fill(x + 10, y - 0.25f, w - 20, 0.5f, Theme.SEPARATOR);
     }
 
     private static boolean severe(Alert.Type t) {

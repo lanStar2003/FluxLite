@@ -45,4 +45,10 @@ public class ClientProxy extends CommonProxy {
         Minecraft.getMinecraft()
             .displayGuiScreen(new GuiHost(new ControlCenterScreen(player.worldObj.provider.dimensionId, x, y, z)));
     }
+
+    @Override
+    public void openTerminalGui(EntityPlayer player) {
+        Minecraft.getMinecraft()
+            .displayGuiScreen(new GuiHost(ControlCenterScreen.handheld()));
+    }
 }

@@ -26,7 +26,7 @@ import mcp.mobius.waila.api.IWailaDataAccessor;
 import mcp.mobius.waila.api.IWailaDataProvider;
 import mcp.mobius.waila.api.IWailaRegistrar;
 
-/** Waila: owner, and per connected face the direction and current EU/t. */
+/** Waila: owner, and per connected face the direction and current EU/t (or L/t of steam). */
 public final class WailaCompat implements IWailaDataProvider {
 
     private static final WailaCompat INSTANCE = new WailaCompat();
@@ -67,13 +67,16 @@ public final class WailaCompat implements IWailaDataProvider {
             NBTTagCompound p = l.getCompoundTagAt(i);
             PortRole role = PortRole.byId(p.getByte("r"));
             if (role == PortRole.NONE) continue;
+            boolean steam = p.getBoolean("st");
             String side = StatCollector.translateToLocal("fluxlite.side." + p.getByte("s"));
-            String dir = StatCollector.translateToLocal(role.langKey());
+            String dir = StatCollector.translateToLocal(
+                steam ? role == PortRole.INPUT ? "fluxlite.role.steam_in" : "fluxlite.role.steam_out" : role.langKey());
             EnumChatFormatting color = role == PortRole.INPUT ? EnumChatFormatting.GREEN
                 : role == PortRole.OUTPUT ? EnumChatFormatting.GOLD : EnumChatFormatting.AQUA;
-            String value = role == PortRole.INPUT ? Fmt.eut(p.getLong("in"))
-                : role == PortRole.OUTPUT ? Fmt.eut(p.getLong("out"))
-                    : "+" + Fmt.si(p.getLong("in")) + " / -" + Fmt.si(p.getLong("out")) + " EU/t";
+            String unit = steam ? " L/t" : " EU/t";
+            String value = role == PortRole.INPUT ? Fmt.si(p.getLong("in")) + unit
+                : role == PortRole.OUTPUT ? Fmt.si(p.getLong("out")) + unit
+                    : "+" + Fmt.si(p.getLong("in")) + " / -" + Fmt.si(p.getLong("out")) + unit;
             tip.add(
                 EnumChatFormatting.GRAY + side
                     + " "
@@ -83,8 +86,7 @@ public final class WailaCompat implements IWailaDataProvider {
                     + "  "
                     + value
                     + EnumChatFormatting.DARK_GRAY
-                    + "  "
-                    + Fmt.tier(p.getLong("v")));
+                    + (steam ? "" : "  " + Fmt.tier(p.getLong("v"))));
         }
         return tip;
     }
@@ -104,10 +106,11 @@ public final class WailaCompat implements IWailaDataProvider {
         d.setString("owner", c.ownerName == null ? "" : c.ownerName);
         d.setString("name", r != null ? r.name : "");
         NBTTagList l = new NBTTagList();
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < Port.COUNT; i++) {
             Port p = c.ports[i];
             NBTTagCompound pt = new NBTTagCompound();
-            pt.setByte("s", (byte) i);
+            pt.setByte("s", (byte) (i % 6));
+            if (p.steam) pt.setBoolean("st", true);
             pt.setByte("r", (byte) (p.isWorking() ? p.role.ordinal() : 0));
             pt.setLong("v", p.role.supplies() ? p.supplyVoltage : p.collectVoltage);
             Series s = r != null ? r.portSeries[i] : null;

@@ -5,19 +5,21 @@ import com.fluxlite.gui.ui.Theme;
 import com.fluxlite.util.Fmt;
 
 /**
- * The floating display above a control center, drawn in panel units (one unit is 1/72 block in the world). A
- * holographic take on GTNH's industrial information panel: balance, net flow, input / output and the last ten
- * seconds as a curve, on tinted glass with scanlines.
+ * The floating display above a control center, drawn in panel units (1/72 block in the world at the smallest size,
+ * up to 1/24 at the largest). A holographic take on GTNH's industrial information panel: balance, net flow, input /
+ * output, the steam network and the last ten seconds as a curve, on tinted glass with scanlines (or on a solid panel,
+ * when the owner switched transparency off).
  * <p>
  * Opening unfolds it like a projection: a bright line grows sideways, the glass unfolds vertically, then the content
  * flickers in.
  */
 public final class HoloPanel {
 
-    public static final float W = 168, H = 112;
+    public static final float W = 168, H = 122;
 
     static final int CYAN = Theme.TEAL;
     private static final int GLASS_TOP = 0xA0102434, GLASS_BOTTOM = 0x800A1622;
+    private static final int SOLID_TOP = 0xF6122636, SOLID_BOTTOM = 0xF60C1824;
     private static final float R = 6;
 
     /** Translations; arguments are formatted like {@code String.format}. */
@@ -37,9 +39,10 @@ public final class HoloPanel {
     }
 
     /**
-     * @param back true when seen from behind: only the glass, no (mirrored) content
+     * @param back   true when seen from behind: only the glass, no (mirrored) content
+     * @param opaque a solid panel instead of see-through glass
      */
-    public static void draw(Canvas c, HoloState s, long now, boolean back, Tr tr) {
+    public static void draw(Canvas c, HoloState s, long now, boolean back, boolean opaque, Tr tr) {
         float open = s.open;
         float line = clamp(open / 0.3f), unfold = clamp((open - 0.3f) / 0.4f), content = clamp((open - 0.7f) / 0.3f);
         if (line <= 0) return;
@@ -55,9 +58,11 @@ public final class HoloPanel {
             c.round(x, y, w, h, r, Theme.withAlpha(CYAN, 0xD0));
             return;
         }
-        c.roundGradient(x, y, w, h, r, GLASS_TOP, GLASS_BOTTOM);
+        if (opaque) c.roundGradient(x, y, w, h, r, SOLID_TOP, SOLID_BOTTOM);
+        else c.roundGradient(x, y, w, h, r, GLASS_TOP, GLASS_BOTTOM);
         c.roundStroke(x, y, w, h, r, 0.6f, Theme.withAlpha(CYAN, 0x99));
-        for (float yy = y + 3; yy < y + h - 2; yy += 2.5f) c.fill(x + 2, yy, w - 4, 0.3f, 0x0C64D2FF);
+        int scan = opaque ? 0x0864D2FF : 0x0C64D2FF;
+        for (float yy = y + 3; yy < y + h - 2; yy += 2.5f) c.fill(x + 2, yy, w - 4, 0.3f, scan);
         brackets(c, x, y, w, h);
         sweep(c, x, y, w, h, now);
         if (back || content <= 0) return;
@@ -130,8 +135,15 @@ public final class HoloPanel {
         tile(c, 9, ty, tw, tr.tr("fluxlite.gui.input"), Math.round(s.shownIn), Theme.INPUT);
         tile(c, 9 + tw + 4, ty, tw, tr.tr("fluxlite.gui.output"), Math.round(s.shownOut), Theme.OUTPUT);
 
+        // the steam network, when the team uses it; the curve takes the room otherwise
+        float gy = 81, gh = 27;
+        if (s.steamOn) {
+            steam(c, s, 9, 80, W - 18, tr);
+            gy = 98;
+            gh = 10;
+        }
+
         // the last ten seconds
-        float gy = 81, gh = 14;
         c.fill(9, gy + gh, W - 18, 0.4f, Theme.withAlpha(CYAN, 0x40));
         long max = 1;
         for (long v : s.curveIn) max = Math.max(max, v);
@@ -140,12 +152,30 @@ public final class HoloPanel {
         curve(c, 9, gy, W - 18, gh, s.curveOut, max, Theme.OUTPUT);
 
         // footer
-        c.text(tr.tr("fluxlite.holo.connectors", s.online, s.connectors), 9, 100, Theme.LABEL3, 1);
+        c.text(tr.tr("fluxlite.holo.connectors", s.online, s.connectors), 9, 112, Theme.LABEL3, 1);
         String live = tr.tr("fluxlite.holo.live");
         float lw = c.width(live, 1);
-        c.text(live, W - 9 - lw, 100, Theme.LABEL3, 1);
+        c.text(live, W - 9 - lw, 112, Theme.LABEL3, 1);
         boolean blink = (now / 600) % 2 == 0;
-        c.circle(W - 9 - lw - 4.5f, 104, 1.6f, blink ? Theme.RED : Theme.withAlpha(Theme.RED, 0x50));
+        c.circle(W - 9 - lw - 4.5f, 116, 1.6f, blink ? Theme.RED : Theme.withAlpha(Theme.RED, 0x50));
+    }
+
+    /** One line: steam stored, and its net flow. */
+    private static void steam(Canvas c, HoloState s, float x, float y, float w, Tr tr) {
+        c.round(x, y, w, 14, 4, Theme.withAlpha(Theme.STEAM, 0x1A));
+        // a little cloud of steam
+        c.circle(x + 6, y + 8, 2.1f, Theme.STEAM);
+        c.circle(x + 8.6f, y + 6.6f, 2.4f, Theme.STEAM);
+        c.circle(x + 10.8f, y + 8.2f, 1.8f, Theme.STEAM);
+        float tx = x + 15;
+        tx += c.text(tr.tr("fluxlite.holo.steam"), tx, y + 3.5f, Theme.LABEL2, 1) + 5;
+        String bal = Fmt.si(s.steam);
+        tx += c.text(bal, tx, y + 3.5f, Theme.LABEL, 1);
+        c.text(bal, tx - c.width(bal, 1) + 0.5f, y + 3.5f, Theme.LABEL, 1);
+        c.text("L", tx + 3, y + 3.5f, Theme.LABEL2, 1);
+        long net = s.steamIn - s.steamOut;
+        String n = (net > 0 ? "+" : "") + Fmt.si(net) + " L/t";
+        right(c, n, x + w - 5, y + 3.5f, net > 0 ? Theme.GREEN : net < 0 ? Theme.RED : Theme.LABEL2);
     }
 
     /** Label on top, value below, a coloured bar on the left. */

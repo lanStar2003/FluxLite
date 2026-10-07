@@ -17,6 +17,7 @@ import com.fluxlite.backend.GTWirelessBackend;
 import com.fluxlite.core.registry.Registry;
 import com.fluxlite.core.registry.TeamData;
 import com.fluxlite.core.view.HoloView;
+import com.fluxlite.gui.holo.HoloPanel;
 import com.fluxlite.gui.holo.HoloState;
 import com.fluxlite.net.Kinds;
 import com.fluxlite.net.Net;
@@ -30,11 +31,24 @@ import cpw.mods.fml.relauncher.SideOnly;
  */
 public class TileControlCenter extends TileEntity {
 
+    /** Floating display sizes: small, medium, large, extra large. */
+    public static final int HOLO_SIZES = 4;
+    /** Blocks per panel unit, per size (small is 2.3 blocks wide, extra large 7). */
+    private static final float[] HOLO_UNIT = { 1 / 72f, 1 / 48f, 1 / 36f, 1 / 24f };
+    /** Gap between the block and the panel, per size. */
+    private static final float[] HOLO_LIFT = { 0.45f, 0.55f, 0.65f, 0.8f };
+    /** A bigger display opens from farther away. */
+    private static final float[] HOLO_RANGE = { 1f, 1.5f, 2f, 2.5f };
+
     public UUID owner;
     public String ownerName = "";
     public boolean redstoneOnAlert;
     /** The floating display is switched on (by its owner). */
     public boolean hologram = true;
+    /** 0 = small ... 3 = extra large. */
+    public int holoSize;
+    /** Solid panel instead of see-through glass. */
+    public boolean holoOpaque;
     /** Synced to the client for the red-dot front texture. */
     public boolean alertActive;
 
@@ -61,7 +75,8 @@ public class TileControlCenter extends TileEntity {
 
     /** Sends the display data to the players close enough to see it. */
     private void pushHologram() {
-        double r = Config.hologramRange + 4;
+        float range = holoRange();
+        double r = range + 4;
         List<EntityPlayerMP> near = new ArrayList<>();
         for (Object o : worldObj.playerEntities) {
             if (o instanceof EntityPlayerMP p && p.getDistanceSq(xCoord + 0.5, yCoord + 1.5, zCoord + 0.5) <= r * r)
@@ -73,8 +88,24 @@ public class TileControlCenter extends TileEntity {
         d.setInteger("x", xCoord);
         d.setInteger("y", yCoord);
         d.setInteger("z", zCoord);
-        d.setFloat("r", Config.hologramRange);
+        d.setFloat("r", range);
         for (EntityPlayerMP p : near) Net.toClient(p, Kinds.HOLO_DATA, d);
+    }
+
+    public float holoRange() {
+        return Config.hologramRange * HOLO_RANGE[size()];
+    }
+
+    private int size() {
+        return Math.max(0, Math.min(HOLO_SIZES - 1, holoSize));
+    }
+
+    public float holoUnit() {
+        return HOLO_UNIT[size()];
+    }
+
+    public float holoLift() {
+        return HOLO_LIFT[size()];
     }
 
     public int redstoneLevel() {
@@ -89,6 +120,20 @@ public class TileControlCenter extends TileEntity {
 
     public void setHologram(boolean on) {
         hologram = on;
+        changed();
+    }
+
+    public void setHoloSize(int size) {
+        holoSize = Math.max(0, Math.min(HOLO_SIZES - 1, size));
+        changed();
+    }
+
+    public void setHoloOpaque(boolean opaque) {
+        holoOpaque = opaque;
+        changed();
+    }
+
+    private void changed() {
         markDirty();
         if (worldObj != null) worldObj.markBlockForUpdate(xCoord, yCoord, zCoord);
     }
@@ -103,8 +148,22 @@ public class TileControlCenter extends TileEntity {
     @SideOnly(Side.CLIENT)
     public AxisAlignedBB getRenderBoundingBox() {
         // the display floats above the block and is wider than it
-        return AxisAlignedBB
-            .getBoundingBox(xCoord - 1.5, yCoord, zCoord - 1.5, xCoord + 2.5, yCoord + 3.5, zCoord + 2.5);
+        double half = HoloPanel.W * holoUnit() / 2 + 0.5;
+        double top = 1 + holoLift() + HoloPanel.H * holoUnit() + 0.5;
+        return AxisAlignedBB.getBoundingBox(
+            xCoord + 0.5 - half,
+            yCoord,
+            zCoord + 0.5 - half,
+            xCoord + 0.5 + half,
+            yCoord + top,
+            zCoord + 0.5 + half);
+    }
+
+    @Override
+    @SideOnly(Side.CLIENT)
+    public double getMaxRenderDistanceSquared() {
+        double d = Math.max(64, holoRange() + 16);
+        return d * d;
     }
 
     @Override
@@ -117,6 +176,8 @@ public class TileControlCenter extends TileEntity {
         t.setString("ownerName", ownerName == null ? "" : ownerName);
         t.setBoolean("rs", redstoneOnAlert);
         t.setBoolean("holo", hologram);
+        t.setByte("holoSize", (byte) holoSize);
+        t.setBoolean("holoOpaque", holoOpaque);
     }
 
     @Override
@@ -126,6 +187,8 @@ public class TileControlCenter extends TileEntity {
         ownerName = t.getString("ownerName");
         redstoneOnAlert = t.getBoolean("rs");
         hologram = !t.hasKey("holo") || t.getBoolean("holo");
+        holoSize = Math.max(0, Math.min(HOLO_SIZES - 1, t.getByte("holoSize")));
+        holoOpaque = t.getBoolean("holoOpaque");
     }
 
     @Override
@@ -133,6 +196,8 @@ public class TileControlCenter extends TileEntity {
         NBTTagCompound t = new NBTTagCompound();
         t.setBoolean("a", alertActive);
         t.setBoolean("h", hologram);
+        t.setByte("s", (byte) holoSize);
+        t.setBoolean("o", holoOpaque);
         return new S35PacketUpdateTileEntity(xCoord, yCoord, zCoord, 0, t);
     }
 
@@ -141,6 +206,8 @@ public class TileControlCenter extends TileEntity {
         NBTTagCompound t = pkt.func_148857_g();
         alertActive = t.getBoolean("a");
         hologram = t.getBoolean("h");
+        holoSize = t.getByte("s");
+        holoOpaque = t.getBoolean("o");
         if (worldObj != null) worldObj.markBlockRangeForRenderUpdate(xCoord, yCoord, zCoord, xCoord, yCoord, zCoord);
     }
 }

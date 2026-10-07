@@ -16,6 +16,10 @@ public final class PortInfo {
     public long supplyVoltage, supplyAmperage, collectVoltage, collectAmperage;
     public String target = "";
     public boolean cable;
+    /** Devices the face reaches (more than one only through a cable or pipe). */
+    public int devices;
+    /** Position of the single device behind a cable or pipe; null otherwise. */
+    public int[] at;
 
     public boolean isWorking() {
         return status == PortStatus.OK && role != PortRole.NONE;
@@ -36,6 +40,8 @@ public final class PortInfo {
         t.setLong("ca", collectAmperage);
         t.setString("t", target == null ? "" : target);
         t.setBoolean("c", cable);
+        t.setShort("n", (short) Math.min(Short.MAX_VALUE, devices));
+        if (at != null) t.setIntArray("at", at);
     }
 
     public void read(NBTTagCompound t) {
@@ -48,5 +54,8 @@ public final class PortInfo {
         collectAmperage = t.getLong("ca");
         target = t.getString("t");
         cable = t.getBoolean("c");
+        devices = t.getShort("n");
+        int[] a = t.getIntArray("at");
+        at = a.length == 3 ? a : null;
     }
 }

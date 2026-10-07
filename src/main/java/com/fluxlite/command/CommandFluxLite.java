@@ -15,6 +15,7 @@ import net.minecraft.util.ChatComponentTranslation;
 import net.minecraftforge.common.DimensionManager;
 
 import com.fluxlite.backend.GTWirelessBackend;
+import com.fluxlite.backend.SteamNetwork;
 import com.fluxlite.chunk.ChunkLoadManager;
 import com.fluxlite.core.Settlement;
 import com.fluxlite.core.registry.Registry;
@@ -23,7 +24,9 @@ import com.fluxlite.util.Fmt;
 import gregtech.common.misc.spaceprojects.SpaceProjectManager;
 
 /**
- * /fluxlite balance [player] | add &lt;eu&gt; [player] | team [player] | status | settle
+ * /fluxlite balance [player] | add &lt;eu&gt; [player] | steam [player] | addsteam &lt;litres&gt; [player] | team
+ * [player]
+ * | status | settle
  * <p>
  * "balance" and "add" are the M0 check: read and change a team's GT wireless balance through the same backend the
  * connectors use.
@@ -37,7 +40,7 @@ public class CommandFluxLite extends CommandBase {
 
     @Override
     public String getCommandUsage(ICommandSender sender) {
-        return "/fluxlite <balance|add|team|status|settle>";
+        return "/fluxlite <balance|add|steam|addsteam|team|status|settle>";
     }
 
     @Override
@@ -94,6 +97,33 @@ public class CommandFluxLite extends CommandBase {
                         b.getBalance(u)
                             .toString()));
             }
+            case "steam" -> {
+                SteamNetwork net = SteamNetwork.get();
+                UUID u = target(sender, args, 1);
+                BigInteger bal = net == null ? BigInteger.ZERO : net.getBalance(u);
+                sender.addChatMessage(
+                    new ChatComponentTranslation("fluxlite.cmd.steam", bal.toString(), Fmt.si(bal) + " L"));
+            }
+            case "addsteam" -> {
+                if (!isOp(sender)) throw new WrongUsageException("fluxlite.cmd.op_only");
+                if (args.length < 2) throw new WrongUsageException("/fluxlite addsteam <litres> [player]");
+                BigInteger amount;
+                try {
+                    amount = new BigInteger(args[1]);
+                } catch (NumberFormatException e) {
+                    throw new WrongUsageException("/fluxlite addsteam <litres> [player]");
+                }
+                SteamNetwork net = SteamNetwork.get();
+                if (net == null) return;
+                UUID u = target(sender, args, 2);
+                boolean ok = net.add(u, amount);
+                sender.addChatMessage(
+                    new ChatComponentTranslation(
+                        ok ? "fluxlite.cmd.addsteam_ok" : "fluxlite.cmd.addsteam_fail",
+                        amount.toString(),
+                        net.getBalance(u)
+                            .toString()));
+            }
             case "team" -> {
                 UUID u = target(sender, args, 1);
                 UUID leader = b.resolveTeam(u);
@@ -136,13 +166,20 @@ public class CommandFluxLite extends CommandBase {
     @Override
     @SuppressWarnings("rawtypes")
     public List addTabCompletionOptions(ICommandSender sender, String[] args) {
-        if (args.length == 1)
-            return getListOfStringsMatchingLastWord(args, "balance", "add", "team", "status", "settle");
-        if (args.length == 2 && !args[0].equals("add") || args.length == 3 && args[0].equals("add"))
-            return getListOfStringsMatchingLastWord(
-                args,
-                MinecraftServer.getServer()
-                    .getAllUsernames());
+        if (args.length == 1) return getListOfStringsMatchingLastWord(
+            args,
+            "balance",
+            "add",
+            "steam",
+            "addsteam",
+            "team",
+            "status",
+            "settle");
+        boolean amount = args[0].equals("add") || args[0].equals("addsteam");
+        if (args.length == 2 && !amount || args.length == 3 && amount) return getListOfStringsMatchingLastWord(
+            args,
+            MinecraftServer.getServer()
+                .getAllUsernames());
         return new ArrayList<>();
     }
 }

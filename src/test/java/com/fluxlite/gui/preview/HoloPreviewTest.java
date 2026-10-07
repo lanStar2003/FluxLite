@@ -53,16 +53,24 @@ class HoloPreviewTest {
             s.curveIn[i] = (long) (12_000_000 + 1_200_000 * Math.sin(i / 6.0) + 300_000 * r.nextDouble());
             s.curveOut[i] = (long) (9_000_000 + 2_200_000 * Math.sin(i / 3.5 + 1) + 300_000 * r.nextDouble());
         }
+        s.steamOn = true;
+        s.steam = new BigInteger("48200000");
+        s.steamIn = 3_600;
+        s.steamOut = 2_880;
         s.open = open;
         return s;
     }
 
     /** The panel alone on a transparent image, {@code scale} pixels per panel unit. */
     private static BufferedImage panel(ZipFile jar, HoloState s, int scale, long now) throws Exception {
+        return panel(jar, s, scale, now, false);
+    }
+
+    private static BufferedImage panel(ZipFile jar, HoloState s, int scale, long now, boolean opaque) throws Exception {
         Java2DCanvas c = new Java2DCanvas((int) HoloPanel.W + 2 * PAD, (int) HoloPanel.H + 2 * PAD, scale, jar);
         c.graphics()
             .translate(PAD, PAD);
-        HoloPanel.draw(c, s, now, false, HOST::tr);
+        HoloPanel.draw(c, s, now, false, opaque, HOST::tr);
         return c.image;
     }
 
@@ -84,6 +92,28 @@ class HoloPreviewTest {
             night(g, img.getWidth(), img.getHeight());
             g.drawImage(p, 0, 0, null);
             ImageIO.write(img, "png", new File(OUT, "holo_panel.png"));
+
+            // see-through glass next to the solid panel, over a busy background so the difference shows
+            BufferedImage glass = panel(jar, sample(1), 4, 1200, false), solid = panel(jar, sample(1), 4, 1200, true);
+            BufferedImage both = new BufferedImage(
+                glass.getWidth() * 2 + 24,
+                glass.getHeight(),
+                BufferedImage.TYPE_INT_ARGB);
+            g = both.createGraphics();
+            for (int bx = 0; bx < both.getWidth(); bx += 24) for (int by = 0; by < both.getHeight(); by += 24) {
+                g.setColor((bx / 24 + by / 24) % 2 == 0 ? new Color(0x5D8A3A) : new Color(0x8A6A45));
+                g.fillRect(bx, by, 24, 24);
+            }
+            g.drawImage(glass, 0, 0, null);
+            g.drawImage(solid, glass.getWidth() + 24, 0, null);
+            ImageIO.write(both, "png", new File(OUT, "holo_glass_vs_solid.png"));
+            HoloState dry = sample(1);
+            dry.steamOn = false;
+            p = panel(jar, dry, 6, 1200);
+            g = img.createGraphics();
+            night(g, img.getWidth(), img.getHeight());
+            g.drawImage(p, 0, 0, null);
+            ImageIO.write(img, "png", new File(OUT, "holo_panel_nosteam.png"));
 
             // unfolding: line, glass, content flickering in, open
             float[] steps = { 0.18f, 0.45f, 0.8f, 1f };

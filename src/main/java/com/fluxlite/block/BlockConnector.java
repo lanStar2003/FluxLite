@@ -1,5 +1,6 @@
 package com.fluxlite.block;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import net.minecraft.block.Block;
@@ -60,7 +61,7 @@ public class BlockConnector extends BlockContainer {
         setHardness(3.0F);
         setResistance(10.0F);
         setStepSound(soundTypeMetal);
-        setHarvestLevel("pickaxe", 1);
+        setHarvestLevel("wrench", 0);
         setCreativeTab(ModBlocks.TAB);
         setLightOpacity(0);
     }
@@ -250,6 +251,36 @@ public class BlockConnector extends BlockContainer {
     public void onNeighborChange(IBlockAccess world, int x, int y, int z, int tileX, int tileY, int tileZ) {
         if (world.getTileEntity(x, y, z) instanceof TileConnector c && c.getWorldObj() != null
             && !c.getWorldObj().isRemote) c.markNeighborChanged();
+    }
+
+    // ------------------------------------------------------------------ harvesting (like a GT machine)
+
+    @Override
+    public boolean canHarvestBlock(EntityPlayer player, int meta) {
+        return Harvest.canHarvest(player) || super.canHarvestBlock(player, meta);
+    }
+
+    @Override
+    public float getPlayerRelativeBlockHardness(EntityPlayer player, World world, int x, int y, int z) {
+        return Harvest.strength(this, player, world, x, y, z);
+    }
+
+    /** Keeps the tile entity until {@link #harvestBlock} has dropped the item, so it can keep the settings. */
+    @Override
+    public boolean removedByPlayer(World world, EntityPlayer player, int x, int y, int z, boolean willHarvest) {
+        if (willHarvest) return true;
+        return super.removedByPlayer(world, player, x, y, z, false);
+    }
+
+    @Override
+    public void harvestBlock(World world, EntityPlayer player, int x, int y, int z, int meta) {
+        super.harvestBlock(world, player, x, y, z, meta);
+        world.setBlockToAir(x, y, z);
+    }
+
+    @Override
+    public ArrayList<ItemStack> getDrops(World world, int x, int y, int z, int meta, int fortune) {
+        return Harvest.drops(this, world, x, y, z);
     }
 
     @Override

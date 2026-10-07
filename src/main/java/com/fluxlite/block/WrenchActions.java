@@ -25,12 +25,12 @@ import com.fluxlite.tile.TileControlCenter;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 
 /**
- * A wrench on a FluxLite block (handled on the server, before the wrench's own logic):
+ * Right-clicking a FluxLite block with a wrench (handled on the server, before the wrench's own logic):
  * <ul>
- * <li>sneaking: dismantle it straight into the inventory; the item keeps its settings (connector name and switched
- * off faces, control center switches)</li>
- * <li>connector: switch the clicked face on or off</li>
- * <li>control center: turn it (towards the clicked side, or by 90 degrees)</li>
+ * <li>connector: switch the clicked face on or off; sneaking, dismantle it like a conduit: it drops on the ground and
+ * keeps its name and switched off faces</li>
+ * <li>control center: turn it (towards the clicked side, or by 90 degrees). It is taken down like a GT machine, by
+ * breaking it with the wrench (see {@link Harvest}).</li>
  * </ul>
  * Only the owner's team (or an OP) may do this.
  */
@@ -58,9 +58,10 @@ public final class WrenchActions {
             mp.addChatComponentMessage(new ChatComponentTranslation("fluxlite.msg.not_owner"));
             return;
         }
-        if (p.isSneaking()) dismantle(w, e.x, e.y, e.z, mp);
-        else if (te instanceof TileConnector c) toggle(c, e.face, mp);
-        else ModBlocks.controlCenter.rotateBlock(w, e.x, e.y, e.z, ForgeDirection.getOrientation(e.face));
+        if (te instanceof TileConnector c) {
+            if (p.isSneaking()) dismantle(w, e.x, e.y, e.z);
+            else toggle(c, e.face, mp);
+        } else ModBlocks.controlCenter.rotateBlock(w, e.x, e.y, e.z, ForgeDirection.getOrientation(e.face));
         Wrenches.use(held, p, w, e.x, e.y, e.z);
     }
 
@@ -75,19 +76,12 @@ public final class WrenchActions {
                 new ChatComponentTranslation("fluxlite.side." + face)));
     }
 
-    private static void dismantle(World w, int x, int y, int z, EntityPlayerMP p) {
-        Block b = w.getBlock(x, y, z);
-        ItemStack drop = new ItemStack(b, 1, 0);
-        NBTTagCompound kept = settings(w.getTileEntity(x, y, z));
-        if (kept != null) {
-            NBTTagCompound root = new NBTTagCompound();
-            root.setTag(TAG, kept);
-            drop.setTagCompound(root);
-        }
-        // breakBlock still runs: buffers go back to the network, the connector leaves the registry
-        w.setBlockToAir(x, y, z);
-        if (!p.inventory.addItemStackToInventory(drop)) p.dropPlayerItemWithRandomChoice(drop, false);
-        p.inventoryContainer.detectAndSendChanges();
+    /**
+     * Breaks the block with its drop on the ground (the drop keeps the settings, see {@link Harvest#drops}).
+     * breakBlock still runs: buffers go back to the network, the connector leaves the registry.
+     */
+    private static void dismantle(World w, int x, int y, int z) {
+        w.func_147480_a(x, y, z, true);
     }
 
     /** What a dismantled block remembers; null when everything is default, so such items still stack. */
@@ -104,6 +98,8 @@ public final class WrenchActions {
         } else if (te instanceof TileControlCenter cc) {
             if (cc.redstoneOnAlert) t.setBoolean("rs", true);
             if (!cc.hologram) t.setBoolean("noHolo", true);
+            if (cc.holoSize != 0) t.setByte("holoSize", (byte) cc.holoSize);
+            if (cc.holoOpaque) t.setBoolean("holoOpaque", true);
         }
         return t.hasNoTags() ? null : t;
     }
@@ -119,10 +115,12 @@ public final class WrenchActions {
         if (te instanceof TileConnector c) {
             if (t.hasKey("name")) c.pendingName = t.getString("name");
             byte off = t.getByte("off");
-            for (int i = 0; i < 6; i++) if ((off >> i & 1) != 0) c.ports[i].mode = PortMode.OFF;
+            for (int i = 0; i < 6; i++) if ((off >> i & 1) != 0) c.ports[i].mode = c.ports[i + 6].mode = PortMode.OFF;
         } else if (te instanceof TileControlCenter cc) {
             cc.redstoneOnAlert = t.getBoolean("rs");
             cc.hologram = !t.getBoolean("noHolo");
+            cc.holoSize = Math.max(0, Math.min(TileControlCenter.HOLO_SIZES - 1, t.getByte("holoSize")));
+            cc.holoOpaque = t.getBoolean("holoOpaque");
         }
         te.markDirty();
     }

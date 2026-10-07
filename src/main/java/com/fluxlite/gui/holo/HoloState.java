@@ -21,6 +21,10 @@ public final class HoloState {
     public int online, connectors, alerts;
     public boolean down;
     public long[] curveIn = new long[0], curveOut = new long[0];
+    /** The team's steam network (shown when it is in use). */
+    public boolean steamOn;
+    public BigInteger steam = BigInteger.ZERO;
+    public long steamIn, steamOut;
     /** Blocks; the display opens when the viewer is closer than this. */
     public float range = 12;
     public long receivedAt;
@@ -34,11 +38,7 @@ public final class HoloState {
 
     public void accept(NBTTagCompound t, long now) {
         team = t.getString("team");
-        try {
-            balance = new BigInteger(t.getString("balance"));
-        } catch (NumberFormatException e) {
-            balance = BigInteger.ZERO;
-        }
+        balance = big(t.getString("balance"));
         in = t.getLong("in");
         out = t.getLong("out");
         eta = t.hasKey("eta") ? t.getLong("eta") : -1;
@@ -48,12 +48,24 @@ public final class HoloState {
         down = t.getBoolean("down");
         curveIn = Longs.unpack(t.getIntArray("cin"));
         curveOut = Longs.unpack(t.getIntArray("cout"));
+        steamOn = t.getBoolean("steamOn");
+        steam = big(t.getString("steam"));
+        steamIn = t.getLong("sin");
+        steamOut = t.getLong("sout");
         if (t.hasKey("r")) range = t.getFloat("r");
         receivedAt = now;
         if (fresh) {
             shownIn = in;
             shownOut = out;
             fresh = false;
+        }
+    }
+
+    private static BigInteger big(String s) {
+        try {
+            return new BigInteger(s);
+        } catch (NumberFormatException e) {
+            return BigInteger.ZERO;
         }
     }
 

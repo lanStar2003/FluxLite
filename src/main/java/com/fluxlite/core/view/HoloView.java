@@ -39,6 +39,7 @@ public final class HoloView {
         t.setInteger("connectors", records.size());
         t.setBoolean("down", !GTWirelessBackend.INSTANCE.isAvailable());
         if (td == null) return t;
+        ControlCenterView.steam(t, td, records);
 
         Series s = td.series;
         t.setLong("in", s.rateIn());

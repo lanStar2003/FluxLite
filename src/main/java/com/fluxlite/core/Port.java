@@ -7,13 +7,22 @@ import com.fluxlite.Config;
 import com.fluxlite.adapter.EnergyAdapter;
 
 /**
- * Runtime state of one connector face. Two small buffers: {@link #supply} holds energy taken from the network that
- * is on its way to the device, {@link #collected} holds energy from the device on its way into the network. Both are
- * settled with the wireless network by {@link Settlement}.
+ * Runtime state of one channel of a connector face. Every face has two: EU (index 0-5) and steam (index 6-11).
+ * <p>
+ * EU has two small buffers: {@link #supply} holds energy taken from the network that is on its way to the device,
+ * {@link #collected} holds energy from the device on its way into the network. Both are settled with the wireless
+ * network by {@link Settlement}. Steam needs no buffers: it goes straight to and from the steam network, so the
+ * amounts are litres instead of EU but the metering is the same.
  */
 public final class Port {
 
+    /** Number of channels per connector: six EU faces, then six steam faces. */
+    public static final int COUNT = 12;
+
     public final ForgeDirection side;
+    /** 0-5: EU on that face, 6-11: steam on face {@code index - 6}. */
+    public final int index;
+    public final boolean steam;
 
     public PortMode mode = PortMode.AUTO;
     public PortRole role = PortRole.NONE;
@@ -36,7 +45,13 @@ public final class Port {
     public long outDebt;
 
     public Port(ForgeDirection side) {
+        this(side, false);
+    }
+
+    public Port(ForgeDirection side, boolean steam) {
         this.side = side;
+        this.steam = steam;
+        this.index = side.ordinal() + (steam ? 6 : 0);
     }
 
     public boolean collects() {
@@ -52,6 +67,10 @@ public final class Port {
     }
 
     public void recomputeCapacity() {
+        if (steam) {
+            supplyCap = collectCap = 0;
+            return;
+        }
         long periods = (long) Config.settlementPeriod * Config.bufferPeriods;
         supplyCap = role.supplies() ? Math.max(mul(mul(supplyVoltage, supplyAmperage), periods), supplyVoltage) : 0;
         collectCap = role.collects() ? Math.max(mul(mul(collectVoltage, collectAmperage), periods), 2048) : 0;

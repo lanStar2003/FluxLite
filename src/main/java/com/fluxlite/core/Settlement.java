@@ -88,6 +88,7 @@ public final class Settlement {
             if (team == null) continue;
             Batch b = batches.computeIfAbsent(team, k -> new Batch());
             for (Port p : c.ports) {
+                if (p.steam) continue; // steam goes straight to the steam network
                 if (p.collected > 0) {
                     b.collected = add(b.collected, p.collected);
                     p.collected = 0;

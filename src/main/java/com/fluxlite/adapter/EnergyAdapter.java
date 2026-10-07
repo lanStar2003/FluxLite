@@ -7,7 +7,8 @@ import net.minecraft.tileentity.TileEntity;
 import com.fluxlite.core.MachineSample;
 
 /**
- * Uniform view of whatever sits next to a connector face. All amounts are EU; RF adapters convert internally.
+ * Uniform view of whatever sits next to a connector face. All amounts are EU; RF adapters convert internally. Steam
+ * adapters use the same interface with litres instead of EU (and no voltage).
  */
 public interface EnergyAdapter {
 
@@ -15,7 +16,8 @@ public interface EnergyAdapter {
         GT_MACHINE,
         GT_CABLE,
         IC2,
-        RF
+        RF,
+        STEAM
     }
 
     Kind kind();
@@ -85,7 +87,18 @@ public interface EnergyAdapter {
         return -1;
     }
 
+    /** For a cable: the devices on it ("name", "name ×3", "name +2"); otherwise the neighbour's name. */
     String displayName();
+
+    /** How many devices the face reaches: 1 for a device next to it, the number of endpoints for a cable. */
+    default int deviceCount() {
+        return 1;
+    }
+
+    /** Where the single device behind a cable is (x, y, z), for "locate"; null when there is not exactly one. */
+    default int[] devicePos() {
+        return null;
+    }
 
     /** Called once per second; cable adapters report the machines behind the cable. */
     default void collectSamples(List<MachineSample> out) {}

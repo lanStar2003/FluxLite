@@ -37,6 +37,8 @@ public final class Theme {
     public static final int INPUT = GREEN;
     public static final int OUTPUT = ORANGE;
     public static final int BOTH = TEAL;
+    /** Steam network accents (a light steel blue, apart from the direction colors). */
+    public static final int STEAM = 0xFFA8C7DA;
 
     public static final float RADIUS_WINDOW = 10, RADIUS_CARD = 7, RADIUS_CONTROL = 5;
 
