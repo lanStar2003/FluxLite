@@ -12,6 +12,7 @@ import net.minecraftforge.common.util.ForgeDirection;
 
 import com.fluxlite.Config;
 import com.fluxlite.adapter.IC2Adapter;
+import com.fluxlite.compat.GTSinks;
 import com.fluxlite.tile.TileConnector;
 
 import cofh.api.energy.IEnergyProvider;
@@ -64,6 +65,24 @@ public final class CableScanner {
         public final List<Endpoint> consumers = new ArrayList<>();
         public final List<Endpoint> producers = new ArrayList<>();
         public boolean unknownConsumer;
+        /** The cable blocks walked. */
+        public final List<BaseMetaPipeEntity> pipes = new ArrayList<>();
+        /** Where the cables and the devices on them are, so a block placed or broken next to them is noticed. */
+        public final Set<Long> positions = new HashSet<>();
+
+        /** Machines: devices that only take energy. */
+        public int machines() {
+            int n = 0;
+            for (Endpoint e : consumers) if (!e.producer) n++;
+            return n;
+        }
+
+        /** Batteries and buffers: devices that take energy and give it back. */
+        public int storages() {
+            int n = 0;
+            for (Endpoint e : consumers) if (e.producer) n++;
+            return n;
+        }
 
         public long minConsumerVoltage() {
             long v = Long.MAX_VALUE;
@@ -112,6 +131,8 @@ public final class CableScanner {
             BaseMetaPipeEntity pipe = queue.poll();
             if (!(pipe.getMetaTileEntity() instanceof MTECable cable)) continue;
             r.cables++;
+            r.pipes.add(pipe);
+            r.positions.add(MachineSample.posKey(pipe));
             r.minCableVoltage = Math.min(r.minCableVoltage, cable.mVoltage);
             r.minCableAmperage = Math.min(r.minCableAmperage, cable.mAmperage);
             byte connections = pipe.getConnections();
@@ -179,7 +200,10 @@ public final class CableScanner {
                         c.getOutputVoltage(),
                         c.getOutputAmperage()),
                     r);
+            } else if (GTSinks.anyVoltage(te)) {
+                add(new Endpoint(te, face, in, out, Long.MAX_VALUE, GTSinks.amperage(te), 0, 0), r);
             } else {
+                // nothing says what voltage it survives (an AE2 P2P tunnel passes it on to whatever is behind)
                 if (in) r.unknownConsumer = true;
                 add(new Endpoint(te, face, in, out, 0, 0, 0, 0), r);
             }
@@ -199,6 +223,7 @@ public final class CableScanner {
     }
 
     private static void add(Endpoint e, Result r) {
+        r.positions.add(MachineSample.posKey(e.tile));
         if (e.consumer) r.consumers.add(e);
         if (e.producer) r.producers.add(e);
     }

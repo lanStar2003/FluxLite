@@ -17,6 +17,8 @@ public final class Kinds {
     // connector edits
     public static final int OP_NAME = 0;
     public static final int OP_TOGGLE = 1;
+    /** Cycles the fixed direction of channel "side" (0-5 EU, 6-11 steam). */
+    public static final int OP_DIRECTION = 2;
 
     // control center actions
     public static final int ACT_CHAT = 0;
@@ -25,6 +27,8 @@ public final class Kinds {
     /** Hologram size, 0 (small) to 3 (extra large), in "value". */
     public static final int ACT_HOLO_SIZE = 3;
     public static final int ACT_HOLO_OPAQUE = 4;
+    /** Switches the team's alerts on or off. */
+    public static final int ACT_ALERTS = 5;
 
     private Kinds() {}
 }

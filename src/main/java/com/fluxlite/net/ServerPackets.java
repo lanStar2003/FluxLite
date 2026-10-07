@@ -55,7 +55,8 @@ public final class ServerPackets {
             case Kinds.CONNECTOR_EDIT -> {
                 if (!(te instanceof TileConnector c) || !(sameTeam(player, c.owner) || isOp(player))) return;
                 ConnectorView.applyEdit(c, d);
-                if (d.getInteger("op") == Kinds.OP_TOGGLE && c.isLive()) c.resolvePorts();
+                int op = d.getInteger("op");
+                if ((op == Kinds.OP_TOGGLE || op == Kinds.OP_DIRECTION) && c.isLive()) c.resolvePorts();
                 Net.toClient(player, Kinds.CONNECTOR_DATA, ConnectorView.build(c));
             }
             case Kinds.CC_REQUEST -> {

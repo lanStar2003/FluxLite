@@ -5,6 +5,7 @@ import net.minecraftforge.common.util.ForgeDirection;
 
 import com.fluxlite.Config;
 import com.fluxlite.adapter.EnergyAdapter;
+import com.fluxlite.adapter.RF;
 
 /**
  * Runtime state of one channel of a connector face. Every face has two: EU (index 0-5) and steam (index 6-11).
@@ -25,10 +26,16 @@ public final class Port {
     public final boolean steam;
 
     public PortMode mode = PortMode.AUTO;
+    /** Direction the player fixed for this channel; NONE = automatic. Only INPUT and OUTPUT are used. */
+    public PortRole fixed = PortRole.NONE;
     public PortRole role = PortRole.NONE;
     public PortStatus status = PortStatus.NO_TARGET;
     public EnergyAdapter adapter;
     public String targetName = "";
+    /** Shown instead of the GT tier (see {@link EnergyAdapter#unitTag}); null shows the tier. */
+    public String unitTag;
+    /** RF pushed in that does not make a whole EU yet. */
+    public final RF.Carry rfCarry = new RF.Carry();
 
     /** Spec used to feed the device (never above its rated input). */
     public long supplyVoltage, supplyAmperage;
@@ -43,6 +50,8 @@ public final class Port {
     public boolean tickActive;
     /** IC2 hands back unused energy a tick later; it is subtracted from the next ticks' output. */
     public long outDebt;
+    /** Server ticks this channel last took energy in and last handed it out (a both-way cable does one at a time). */
+    public long lastInTick = Long.MIN_VALUE / 2, lastOutTick = Long.MIN_VALUE / 2;
 
     public Port(ForgeDirection side) {
         this(side, false);
@@ -66,6 +75,16 @@ public final class Port {
         return status == PortStatus.OK && role != PortRole.NONE;
     }
 
+    /** A both-way channel that handed energy out this tick or the last takes none in: one way at a time. */
+    public boolean mayTakeIn(long tick) {
+        return role != PortRole.BOTH || lastOutTick < tick - 1;
+    }
+
+    /** A both-way channel that just took surplus in hands nothing out: what is on the cable has enough. */
+    public boolean mayHandOut(long tick) {
+        return role != PortRole.BOTH || lastInTick < tick - 1;
+    }
+
     public void recomputeCapacity() {
         if (steam) {
             supplyCap = collectCap = 0;
@@ -86,6 +105,12 @@ public final class Port {
         return Math.max(0, collectCap - collected);
     }
 
+    /** Only INPUT and OUTPUT can be fixed; anything else is automatic. */
+    public static PortRole fixedById(int id) {
+        PortRole r = PortRole.byId(id);
+        return r == PortRole.INPUT || r == PortRole.OUTPUT ? r : PortRole.NONE;
+    }
+
     public static long mul(long a, long b) {
         if (a <= 0 || b <= 0) return 0;
         return a > Long.MAX_VALUE / b ? Long.MAX_VALUE : a * b;
@@ -95,6 +120,7 @@ public final class Port {
         t.setByte("m", (byte) mode.ordinal());
         t.setByte("r", (byte) role.ordinal());
         t.setByte("s", (byte) status.ordinal());
+        if (fixed != PortRole.NONE) t.setByte("f", (byte) fixed.ordinal());
         t.setLong("sb", supply);
         t.setLong("cb", collected);
     }
@@ -103,6 +129,7 @@ public final class Port {
         mode = PortMode.byId(t.getByte("m"));
         role = PortRole.byId(t.getByte("r"));
         status = PortStatus.byId(t.getByte("s"));
+        fixed = fixedById(t.getByte("f"));
         supply = Math.max(0, t.getLong("sb"));
         collected = Math.max(0, t.getLong("cb"));
     }

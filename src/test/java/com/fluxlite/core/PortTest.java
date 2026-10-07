@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.common.util.ForgeDirection;
 
 import org.junit.jupiter.api.Test;
@@ -67,6 +68,54 @@ class PortTest {
         p.status = PortStatus.DISABLED;
         assertFalse(p.supplies());
         assertFalse(p.collects());
+    }
+
+    @Test
+    void fixedDirectionSurvivesSaving() {
+        Port p = new Port(ForgeDirection.NORTH);
+        p.fixed = PortRole.OUTPUT;
+        NBTTagCompound t = new NBTTagCompound();
+        p.write(t);
+        Port back = new Port(ForgeDirection.NORTH);
+        back.read(t);
+        assertEquals(PortRole.OUTPUT, back.fixed);
+
+        Port auto = new Port(ForgeDirection.NORTH);
+        NBTTagCompound none = new NBTTagCompound();
+        auto.write(none);
+        assertFalse(none.hasKey("f"));
+    }
+
+    @Test
+    void onlyInputAndOutputCanBeFixed() {
+        assertEquals(PortRole.NONE, Port.fixedById(PortRole.BOTH.ordinal()));
+        assertEquals(PortRole.NONE, Port.fixedById(99));
+        assertEquals(PortRole.INPUT, Port.fixedById(PortRole.INPUT.ordinal()));
+    }
+
+    @Test
+    void aBothWayChannelGoesOneWayAtATime() {
+        Port p = new Port(ForgeDirection.UP);
+        p.role = PortRole.BOTH;
+        assertTrue(p.mayTakeIn(100) && p.mayHandOut(100));
+        p.lastOutTick = 100;
+        assertFalse(p.mayTakeIn(100), "fed the cable this tick");
+        assertFalse(p.mayTakeIn(101), "fed it the tick before");
+        assertTrue(p.mayTakeIn(102));
+        p.lastInTick = 102;
+        assertFalse(p.mayHandOut(102), "took its surplus this tick");
+        assertFalse(p.mayHandOut(103));
+        assertTrue(p.mayHandOut(104));
+    }
+
+    @Test
+    void oneWayChannelsAreNotHeldBack() {
+        Port p = new Port(ForgeDirection.UP);
+        p.lastInTick = p.lastOutTick = 50;
+        for (PortRole r : new PortRole[] { PortRole.INPUT, PortRole.OUTPUT }) {
+            p.role = r;
+            assertTrue(p.mayTakeIn(50) && p.mayHandOut(50), r.name());
+        }
     }
 
     @Test

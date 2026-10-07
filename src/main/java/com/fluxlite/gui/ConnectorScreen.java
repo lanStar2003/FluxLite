@@ -16,8 +16,9 @@ import com.fluxlite.tile.TileConnector;
 import com.fluxlite.util.Fmt;
 
 /**
- * Connector card: name, live per-tick totals and the six faces. Directions are automatic; the only control is a
- * switch per face. A face that moves both EU and steam (a steam turbine) gets a row for each.
+ * Connector card: name, live per-tick totals and the six faces. Directions are automatic, with a switch per face; a
+ * device that could go either way (an RF storage, a cable with generators and machines) also lets the player fix its
+ * direction by clicking the direction tag. A face that moves both EU and steam (a steam turbine) gets a row for each.
  */
 public class ConnectorScreen extends UiScreen {
 
@@ -184,6 +185,16 @@ public class ConnectorScreen extends UiScreen {
         text(c, Fmt.si(out) + " L/t", tx + 7, y + 5, out > 0 ? Theme.LABEL : Theme.LABEL3);
     }
 
+    /** Small padlock in an 11 units tall tag at (x, y): the direction is fixed by the player. */
+    private static void lock(Canvas c, float x, float y, int color) {
+        c.line(
+            new float[] { x + 0.9f, x + 0.9f, x + 1.6f, x + 2.5f, x + 3.4f, x + 4.1f, x + 4.1f },
+            new float[] { y + 5.2f, y + 3.6f, y + 2.6f, y + 2.3f, y + 2.6f, y + 3.6f, y + 5.2f },
+            0.9f,
+            color);
+        c.round(x, y + 4.8f, 5, 4, 1, color);
+    }
+
     /** Small steam cloud, centered on (x, y). */
     static void cloud(Canvas c, float x, float y) {
         c.circle(x - 2.6f, y + 0.8f, 2.1f, Theme.STEAM);
@@ -259,13 +270,26 @@ public class ConnectorScreen extends UiScreen {
                 pc = Theme.GRAY;
             }
         }
-        float pw = c.width(pill, 1) + 10;
-        pill(c, right - pw, y + 4, pill, pc);
+        PortRole fixed = f.getBoolean("choose") ? PortRole.byId(f.getByte("fixed")) : PortRole.NONE;
+        boolean locked = fixed == PortRole.INPUT || fixed == PortRole.OUTPUT;
+        float pw = c.width(pill, 1) + 10 + (locked ? 7 : 0);
+        float px = right - pw;
+        if (f.getBoolean("choose")) {
+            int ch = f.getByte("ch");
+            if (hover(px - 2, y + 2, pw + 4, 15)) c.round(px, y + 4, pw, 11, 5.5f, Theme.withAlpha(pc, 0x26));
+            onClick(px - 2, y + 2, pw + 4, 15, () -> edit(Kinds.OP_DIRECTION, ch, null));
+        }
+        if (locked) {
+            c.round(px, y + 4, pw, 11, 5.5f, Theme.withAlpha(pc, 0x38));
+            lock(c, px + 5, y + 4, pc);
+            c.text(pill, px + 12, y + 5.5f, pc, 1);
+        } else pill(c, px, y + 4, pill, pc);
         right -= pw + 6;
         String target = f.getString("target");
         if (target.isEmpty()) target = tr(r.steam ? "fluxlite.gui.pipe_empty" : "fluxlite.gui.cable_empty");
         long v = f.getLong("v");
         if (v > 0) target += "  §8" + Fmt.tier(v);
+        else if (f.hasKey("unit")) target += "  §8" + f.getString("unit");
         float tx = x + 28;
         if (r.steam && !r.first) tx += 2;
         text(c, fit(c, target, right - tx), tx, y + 6, off ? Theme.LABEL3 : Theme.LABEL2);

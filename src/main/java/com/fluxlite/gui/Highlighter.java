@@ -8,6 +8,8 @@ import net.minecraftforge.client.event.RenderWorldLastEvent;
 
 import org.lwjgl.opengl.GL11;
 
+import com.fluxlite.gui.ui.McCanvas;
+
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
@@ -55,6 +57,7 @@ public final class Highlighter {
             .getOffsetBoundingBox(-px, -py, -pz);
         RenderGlobal.drawOutlinedBoundingBox(box, -1);
         GL11.glPopAttrib();
+        McCanvas.restoreTexture();
         GL11.glPopMatrix();
     }
 }

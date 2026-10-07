@@ -35,6 +35,8 @@ public final class IC2CableAdapter implements EnergyAdapter {
     private int sinks, sources, cables, safeTier = 13, maxSourceTier;
     /** The machines on the cable, sinks first. */
     private final List<TileEntity> devices = new ArrayList<>();
+    /** The cables walked and the devices on them. */
+    private final Set<Long> positions = new HashSet<>();
     private long scannedAt = Long.MIN_VALUE;
 
     public IC2CableAdapter(TileEntity cable, TileConnector connector, ForgeDirection face) {
@@ -57,7 +59,18 @@ public final class IC2CableAdapter implements EnergyAdapter {
         scan();
     }
 
+    @Override
+    public void invalidateScan() {
+        scannedAt = Long.MIN_VALUE;
+    }
+
+    @Override
+    public boolean covers(long pos) {
+        return positions.contains(pos);
+    }
+
     private void scan() {
+        positions.clear();
         sinks = sources = cables = 0;
         safeTier = 13;
         maxSourceTier = 0;
@@ -101,6 +114,7 @@ public final class IC2CableAdapter implements EnergyAdapter {
             }
         }
         devices.addAll(sourceTiles);
+        positions.addAll(seen);
     }
 
     private static int tierOf(double eu) {

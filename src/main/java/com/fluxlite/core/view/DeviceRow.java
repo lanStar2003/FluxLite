@@ -28,6 +28,8 @@ public final class DeviceRow {
     /** 0 = none, 1 = input (feeds the network), 2 = output (fed by it), 3 = both. */
     public int role;
     public long voltage;
+    /** Shown instead of the tier ("RF"), null for the tier. */
+    public String unit;
     public int tier;
     public long nowIn, nowOut, peak;
     public BigInteger total = BigInteger.ZERO;
@@ -51,6 +53,7 @@ public final class DeviceRow {
         t.setString("c", conn == null ? "" : conn);
         t.setByte("r", (byte) role);
         t.setLong("v", voltage);
+        if (unit != null && !unit.isEmpty()) t.setString("u", unit);
         t.setLong("ni", nowIn);
         t.setLong("no", nowOut);
         t.setLong("pk", peak);

@@ -159,6 +159,12 @@ public class TileControlCenter extends TileEntity {
             zCoord + 0.5 + half);
     }
 
+    /** The floating display is translucent: drawn with water and glass, after the solid world (and its shading). */
+    @Override
+    public boolean shouldRenderInPass(int pass) {
+        return pass == 1;
+    }
+
     @Override
     @SideOnly(Side.CLIENT)
     public double getMaxRenderDistanceSquared() {

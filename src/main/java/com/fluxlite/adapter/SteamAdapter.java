@@ -14,6 +14,7 @@ import net.minecraftforge.fluids.IFluidHandler;
 
 import com.fluxlite.Config;
 import com.fluxlite.core.MachineSample;
+import com.fluxlite.core.PortRole;
 import com.fluxlite.tile.TileConnector;
 import com.fluxlite.util.Names;
 
@@ -53,6 +54,8 @@ public final class SteamAdapter implements EnergyAdapter {
     // pipes only
     private final List<TileEntity> producers = new ArrayList<>(), consumers = new ArrayList<>();
     private final List<ForgeDirection> consumerFaces = new ArrayList<>();
+    /** The pipes walked and the devices on them. */
+    private final Set<Long> positions = new HashSet<>();
     private long scannedAt = Long.MIN_VALUE;
 
     private SteamAdapter(TileEntity tile, TileConnector connector, ForgeDirection face, int type) {
@@ -147,14 +150,21 @@ public final class SteamAdapter implements EnergyAdapter {
         scan();
     }
 
+    @Override
     public void invalidateScan() {
         scannedAt = Long.MIN_VALUE;
+    }
+
+    @Override
+    public boolean covers(long pos) {
+        return positions.contains(pos);
     }
 
     private void scan() {
         producers.clear();
         consumers.clear();
         consumerFaces.clear();
+        positions.clear();
         World w = tile.getWorldObj();
         Set<Long> seen = new HashSet<>();
         Set<TileEntity> devices = new HashSet<>();
@@ -179,6 +189,7 @@ public final class SteamAdapter implements EnergyAdapter {
                     continue;
                 }
                 if (!devices.add(n)) continue;
+                positions.add(MachineSample.posKey(n));
                 int k = classify(n, d.getOpposite());
                 if (k == CONSUMER) {
                     consumers.add(n);
@@ -186,6 +197,7 @@ public final class SteamAdapter implements EnergyAdapter {
                 } else if (k == PRODUCER) producers.add(n);
             }
         }
+        positions.addAll(seen);
     }
 
     // ------------------------------------------------------------------ EnergyAdapter
@@ -222,7 +234,13 @@ public final class SteamAdapter implements EnergyAdapter {
 
     @Override
     public boolean canSend() {
-        return type == PRODUCER || type == PIPE && attached() && consumers.isEmpty() && !producers.isEmpty();
+        return type == PRODUCER || type == PIPE && attached() && !producers.isEmpty();
+    }
+
+    /** A pipe with machines on it is fed, even when boilers push into it too. */
+    @Override
+    public PortRole autoRole() {
+        return canReceive() ? PortRole.OUTPUT : canSend() ? PortRole.INPUT : PortRole.NONE;
     }
 
     @Override

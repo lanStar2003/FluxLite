@@ -15,7 +15,9 @@ import net.minecraftforge.common.util.ForgeDirection;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 
 import com.fluxlite.compat.Wrenches;
+import com.fluxlite.core.Port;
 import com.fluxlite.core.PortMode;
+import com.fluxlite.core.PortRole;
 import com.fluxlite.core.registry.ConnectorRecord;
 import com.fluxlite.core.registry.Registry;
 import com.fluxlite.net.ServerPackets;
@@ -95,6 +97,13 @@ public final class WrenchActions {
             byte off = 0;
             for (int i = 0; i < 6; i++) if (c.ports[i].mode == PortMode.OFF) off |= (byte) (1 << i);
             if (off != 0) t.setByte("off", off);
+            // fixed directions, two bits per channel: 1 input, 2 output
+            int dir = 0;
+            for (int i = 0; i < Port.COUNT; i++) {
+                PortRole f = c.ports[i].fixed;
+                if (f != PortRole.NONE) dir |= (f == PortRole.INPUT ? 1 : 2) << (2 * i);
+            }
+            if (dir != 0) t.setInteger("dir", dir);
         } else if (te instanceof TileControlCenter cc) {
             if (cc.redstoneOnAlert) t.setBoolean("rs", true);
             if (!cc.hologram) t.setBoolean("noHolo", true);
@@ -116,6 +125,11 @@ public final class WrenchActions {
             if (t.hasKey("name")) c.pendingName = t.getString("name");
             byte off = t.getByte("off");
             for (int i = 0; i < 6; i++) if ((off >> i & 1) != 0) c.ports[i].mode = c.ports[i + 6].mode = PortMode.OFF;
+            int dir = t.getInteger("dir");
+            for (int i = 0; i < Port.COUNT; i++) {
+                int f = dir >> (2 * i) & 3;
+                c.ports[i].fixed = f == 1 ? PortRole.INPUT : f == 2 ? PortRole.OUTPUT : PortRole.NONE;
+            }
         } else if (te instanceof TileControlCenter cc) {
             cc.redstoneOnAlert = t.getBoolean("rs");
             cc.hologram = !t.getBoolean("noHolo");
