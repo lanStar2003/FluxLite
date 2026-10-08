@@ -7,6 +7,7 @@ import net.minecraftforge.common.MinecraftForge;
 import com.fluxlite.backend.SteamNetwork;
 import com.fluxlite.block.ModBlocks;
 import com.fluxlite.block.WrenchActions;
+import com.fluxlite.charge.Charger;
 import com.fluxlite.chunk.ChunkLoadManager;
 import com.fluxlite.command.CommandFluxLite;
 import com.fluxlite.core.ServerEvents;
@@ -42,6 +43,9 @@ public class CommonProxy {
             .register(events);
         MinecraftForge.EVENT_BUS.register(events);
         MinecraftForge.EVENT_BUS.register(new WrenchActions());
+        FMLCommonHandler.instance()
+            .bus()
+            .register(new Charger());
         ForgeChunkManager.setForcedChunkLoadingCallback(FluxLite.instance, ChunkLoadManager.INSTANCE);
         if (Loader.isModLoaded("Waila")) {
             FMLInterModComms.sendMessage("Waila", "register", "com.fluxlite.compat.WailaCompat.register");

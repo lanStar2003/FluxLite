@@ -18,6 +18,7 @@ public final class Config {
     private static final String CAT_COMPAT = "compat";
     private static final String CAT_DISPLAY = "display";
     private static final String CAT_STEAM = "steam";
+    private static final String CAT_CHARGING = "charging";
 
     // general
     public static int settlementPeriod = 1;
@@ -56,6 +57,14 @@ public final class Config {
 
     // display
     public static int hologramRange = 12;
+
+    // charging
+    public static boolean chargingEnabled = true;
+    public static int chargingInterval = 20;
+    public static long chargeMaxPerSecond = 0L;
+    public static boolean chargeBatteries = true;
+    public static boolean chargeArmor = true;
+    public static boolean chargeRf = true;
 
     // compat
     public static long rfNominalVoltage = 8192L;
@@ -230,6 +239,38 @@ public final class Config {
             1,
             256,
             "Max IC2 packets injected per tick.");
+
+        chargingEnabled = c.getBoolean(
+            "enabled",
+            CAT_CHARGING,
+            chargingEnabled,
+            "A Flux Terminal in the inventory (charging switched on, sneak-right-click toggles) charges the player's electric items from the team's wireless network.");
+        chargingInterval = c
+            .getInt("intervalTicks", CAT_CHARGING, chargingInterval, 1, 1200, "Ticks between two charging rounds.");
+        try {
+            chargeMaxPerSecond = Math.max(
+                0,
+                Long.parseLong(
+                    c.getString(
+                        "maxEuPerSecond",
+                        CAT_CHARGING,
+                        String.valueOf(chargeMaxPerSecond),
+                        "EU per second one player's items take at most. 0 = no cap (only the team's balance).")
+                        .trim()));
+        } catch (NumberFormatException e) {
+            chargeMaxPerSecond = 0;
+        }
+        chargeBatteries = c.getBoolean(
+            "batteries",
+            CAT_CHARGING,
+            chargeBatteries,
+            "Also charge items that can hand energy on (batteries, energy packs), not only tools and armour.");
+        chargeArmor = c.getBoolean("armor", CAT_CHARGING, chargeArmor, "Also charge the worn armour.");
+        chargeRf = c.getBoolean(
+            "rf",
+            CAT_CHARGING,
+            chargeRf,
+            "Also charge RF items (EnderIO, Draconic Evolution, ...) at GregTech's EU to RF rate.");
 
         hologramRange = c.getInt(
             "hologramRange",
