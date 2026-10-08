@@ -66,6 +66,14 @@ public interface EnergyAdapter {
         return null;
     }
 
+    /**
+     * True for a device FluxLite does not know yet (see {@link ProbeSinkAdapter}): it is fed at a safe voltage and its
+     * face shows "awaiting adaptation" instead of working silently.
+     */
+    default boolean pending() {
+        return false;
+    }
+
     /** True when the voltage/amperage needed to feed the device safely could be read. */
     boolean hasInputSpec();
 

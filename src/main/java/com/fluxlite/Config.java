@@ -69,6 +69,8 @@ public final class Config {
     // compat
     public static long rfNominalVoltage = 8192L;
     public static int ic2MaxPacketsPerTick = 16;
+    public static long pendingVoltage = 32L;
+    public static int pendingAmperage = 64;
 
     private Config() {}
 
@@ -232,6 +234,20 @@ public final class Config {
             1,
             Integer.MAX_VALUE,
             "EU/t one RF face (or AE2 face) moves at most per tick, before conversion. RF rates come from GregTech's config; collecting RF never pays more EU than feeding it costs.");
+        pendingVoltage = c.getInt(
+            "pendingVoltage",
+            CAT_COMPAT,
+            (int) pendingVoltage,
+            1,
+            Integer.MAX_VALUE,
+            "Packet voltage for a GT EU device FluxLite does not know yet (its face shows 'awaiting adaptation'). Kept low so any GT machine behind it survives; a device that reports getInputVoltage() gets that instead.");
+        pendingAmperage = c.getInt(
+            "pendingAmperage",
+            CAT_COMPAT,
+            pendingAmperage,
+            1,
+            1 << 20,
+            "Most packets per tick for such a device; packets it does not accept bounce back.");
         ic2MaxPacketsPerTick = c.getInt(
             "ic2MaxPacketsPerTick",
             CAT_COMPAT,

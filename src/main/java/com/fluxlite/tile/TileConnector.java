@@ -471,6 +471,7 @@ public class TileConnector extends TileEntity
                 status = PortStatus.UNKNOWN_SPEC;
             }
         }
+        if (status == PortStatus.OK && role.supplies() && a.pending()) status = PortStatus.PENDING;
         set(p, a, role, status);
     }
 
@@ -519,7 +520,7 @@ public class TileConnector extends TileEntity
         if (p.adapter == null || !p.adapter.attached()) return VIS_NONE;
         if (p.mode == PortMode.OFF) return VIS_OFF;
         if (p.status == PortStatus.UNKNOWN_SPEC) return VIS_ERROR;
-        return switch (p.status == PortStatus.OK ? p.role : PortRole.NONE) {
+        return switch (p.status.works() ? p.role : PortRole.NONE) {
             case INPUT -> VIS_IN;
             case OUTPUT -> VIS_OUT;
             case BOTH -> VIS_BOTH;
@@ -735,14 +736,14 @@ public class TileConnector extends TileEntity
     public boolean acceptsEnergyFrom(TileEntity emitter, ForgeDirection dir) {
         if (dir == ForgeDirection.UNKNOWN) return false;
         Port p = ports[dir.ordinal()];
-        return ic2Face(p) && p.role.collects() && p.status == PortStatus.OK;
+        return ic2Face(p) && p.role.collects() && p.status.works();
     }
 
     @Override
     public boolean emitsEnergyTo(TileEntity receiver, ForgeDirection dir) {
         if (dir == ForgeDirection.UNKNOWN) return false;
         Port p = ports[dir.ordinal()];
-        return ic2Face(p) && p.role.supplies() && p.status == PortStatus.OK;
+        return ic2Face(p) && p.role.supplies() && p.status.works();
     }
 
     @Override

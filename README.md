@@ -22,7 +22,8 @@ GTNH 2.8.4（Minecraft 1.7.10，GT5-Unofficial 5.09.51.482）的简化版通量�
 | 发电机、动力仓 | **输入**：电进入网络 | 绿 |
 | 能源仓、耗电机器 | **输出**：网络供电给设备 | 橙 |
 | 同时挂着发电和用电设备的 GT 线缆 | **双向** | 蓝 |
-| 能读出连接但没有设备 / 读不出规格 | 待机 / 无法识别 | 灰 / 红 |
+| 认不出的 GT 能源设备（其他模组的方块） | **输出**，标签显示「待适配」：用安全的低压包送电，它收多少送多少 | 橙 |
+| 能读出连接但没有设备 / GT 机器读不出规格 | 待机 / 无法识别 | 灰 / 红 |
 | 被玩家关掉的面 | 已停用 | 深灰 |
 
 接线缆（或管道）的面，名称显示的是线缆另一头的**机器**，不再是线缆本身：一台机器就是它的名字，几台相同的是「名称 ×3」，不同的是「第一台 +2」。只连着一台机器时，控制中心里这一面就代表那台机器（精确计量，「定位」直接指向机器）。
@@ -75,6 +76,7 @@ GT 本身按「整包」送电：机器缓存有空位才收一整包（电压 �
 | EnderIO 电容库、能量缓存 | 按它自己贴着连接器那一面的 IO 设置（Yeta 扳手切换）：「输入」由网络充电，「输出」和默认（电容库挨着连接器时默认输出）放电进网络 |
 | AE2（控制器、能源接收器、充能器、压印器、ME 箱子） | 走 GT EU 接口，每 tick 正好补满它的内部缓存，任何电压都安全；比走 RF 少一成换算损耗。GT 线缆上挂着 AE2 设备也能正常供电 |
 | 铁路（电力馈电器、能量装载机） | 走 GT EU 接口，按它还需要多少分包送 |
+| 其他实现 GT EU 接口的设备（例如 FluxEcho 的通量灵气汲取台） | 自动检测：设备有公开的 `getInputVoltage()`（可选 `getInputAmperage()`、`getStoredEU()`、`getEUCapacity()`，GT 自己的命名）就按它说的电压送、正好补满；没有就自动设为**输出**，用 `compat.pendingVoltage`（默认 32 V）的小包送，每 tick 最多 `compat.pendingAmperage` 包，它不收的包原样退回。这一面显示「**待适配**」（黄色），表示能用、但还没被正式适配 |
 | RF 换算 | 供电按 GT 配置（GTNH 为 100 EU → 360 RF）；收 RF 时**不会比供电更划算**：GTNH 的 GT 配置写的是 100 RF → 100 EU，照搬会让电经 RF 绕一圈变成 3.6 倍，所以收电按 360 RF → 100 EU 计。不足 1 EU 的零头会累积，小太阳能板的电也不会丢 |
 | 蒸汽 | 见下一节 |
 
@@ -164,7 +166,7 @@ OP 可以在控制中心切换查看所有团队。统计的分钟级、小时�
 
 ## 配置
 
-`config/fluxlite.cfg`：无线充电（`charging.enabled`、`charging.intervalTicks`、`charging.maxEuPerSecond`（0 = 不限）、`charging.batteries`、`charging.armor`、`charging.rf`）、结算周期（默认 1 tick）、无线损耗（默认 0）、每团队连接器上限、区块加载开关 / 半径 / 离线策略、线缆扫描节点上限与重扫间隔、告警阈值、是否注册默认配方、RF 名义电压、全息显示屏范围（`display.hologramRange`，0 = 关闭）、蒸汽开关与每面每 tick 上限（`steam.enabled`、`steam.maxLitresPerTick`）。
+`config/fluxlite.cfg`：无线充电（`charging.enabled`、`charging.intervalTicks`、`charging.maxEuPerSecond`（0 = 不限）、`charging.batteries`、`charging.armor`、`charging.rf`）、结算周期（默认 1 tick）、无线损耗（默认 0）、每团队连接器上限、区块加载开关 / 半径 / 离线策略、线缆扫描节点上限与重扫间隔、告警阈值、是否注册默认配方、RF 名义电压、待适配设备的送电电压和每 tick 包数（`compat.pendingVoltage`、`compat.pendingAmperage`）、全息显示屏范围（`display.hologramRange`，0 = 关闭）、蒸汽开关与每面每 tick 上限（`steam.enabled`、`steam.maxLitresPerTick`）。
 
 ## 下载
 

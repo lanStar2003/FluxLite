@@ -15,7 +15,7 @@ import gregtech.api.metatileentity.BaseMetaPipeEntity;
 /**
  * Picks the adapter for whatever is next to a connector face. Many devices speak several APIs; the order prefers the
  * one that tells exactly how much the device takes, without converting: GT machines, then cables, then the
- * mod-specific sinks, IC2, RF, and last other GT sinks (which are only drained, see {@link GTMachineAdapter}).
+ * mod-specific sinks, IC2, RF, and last any other GT EU device ({@link ProbeSinkAdapter}).
  */
 public final class Adapters {
 
@@ -38,7 +38,8 @@ public final class Adapters {
         }
         if (IC2Adapter.handles(te)) return new IC2Adapter(te, connector, face);
         if (RFAdapter.handles(te)) return new RFAdapter(te, face);
-        if (te instanceof IEnergyConnected) return new GTMachineAdapter(te, face);
+        // any other GT EU device: detect what it takes, or feed it carefully until FluxLite learns it
+        if (te instanceof IEnergyConnected) return new ProbeSinkAdapter(te, face);
         return null;
     }
 

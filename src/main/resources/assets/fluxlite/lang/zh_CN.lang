@@ -54,6 +54,7 @@ fluxlite.status.disabled=已停用
 fluxlite.status.no_target=未连接
 fluxlite.status.unknown_spec=无法识别
 fluxlite.status.connector_neighbour=相邻连接器
+fluxlite.status.pending=待适配
 
 fluxlite.alert.low_balance=无线电网余额 %s 低于 %s
 fluxlite.alert.eta_short=按最近的消耗，余额约 %s 后耗尽

@@ -250,8 +250,10 @@ public class ConnectorScreen extends UiScreen {
                 pc = Theme.INPUT;
             }
             case TileConnector.VIS_OUT -> {
-                pill = tr(r.steam ? "fluxlite.role.steam_out" : "fluxlite.role.output");
-                pc = Theme.OUTPUT;
+                boolean pending = PortStatus.byId(f.getByte("status")) == PortStatus.PENDING;
+                pill = tr(
+                    pending ? "fluxlite.status.pending" : r.steam ? "fluxlite.role.steam_out" : "fluxlite.role.output");
+                pc = pending ? Theme.YELLOW : Theme.OUTPUT;
             }
             case TileConnector.VIS_BOTH -> {
                 pill = tr("fluxlite.role.both");

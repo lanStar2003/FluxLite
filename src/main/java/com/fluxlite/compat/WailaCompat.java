@@ -15,6 +15,7 @@ import com.fluxlite.block.BlockConnector;
 import com.fluxlite.block.BlockControlCenter;
 import com.fluxlite.core.Port;
 import com.fluxlite.core.PortRole;
+import com.fluxlite.core.PortStatus;
 import com.fluxlite.core.registry.ConnectorRecord;
 import com.fluxlite.core.stats.Series;
 import com.fluxlite.tile.TileConnector;
@@ -86,7 +87,10 @@ public final class WailaCompat implements IWailaDataProvider {
                     + "  "
                     + value
                     + EnumChatFormatting.DARK_GRAY
-                    + (steam ? "" : "  " + (p.hasKey("u") ? p.getString("u") : Fmt.tier(p.getLong("v")))));
+                    + (steam ? "" : "  " + (p.hasKey("u") ? p.getString("u") : Fmt.tier(p.getLong("v"))))
+                    + (p.getBoolean("pd")
+                        ? "  " + EnumChatFormatting.YELLOW + StatCollector.translateToLocal("fluxlite.status.pending")
+                        : ""));
         }
         return tip;
     }
@@ -112,6 +116,7 @@ public final class WailaCompat implements IWailaDataProvider {
             pt.setByte("s", (byte) (i % 6));
             if (p.steam) pt.setBoolean("st", true);
             pt.setByte("r", (byte) (p.isWorking() ? p.role.ordinal() : 0));
+            if (p.status == PortStatus.PENDING) pt.setBoolean("pd", true);
             if (p.unitTag == null) pt.setLong("v", p.role.supplies() ? p.supplyVoltage : p.collectVoltage);
             else pt.setString("u", p.unitTag);
             Series s = r != null ? r.portSeries[i] : null;

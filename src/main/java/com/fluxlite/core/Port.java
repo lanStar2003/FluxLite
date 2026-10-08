@@ -64,15 +64,15 @@ public final class Port {
     }
 
     public boolean collects() {
-        return status == PortStatus.OK && role.collects();
+        return status.works() && role.collects();
     }
 
     public boolean supplies() {
-        return status == PortStatus.OK && role.supplies();
+        return status.works() && role.supplies();
     }
 
     public boolean isWorking() {
-        return status == PortStatus.OK && role != PortRole.NONE;
+        return status.works() && role != PortRole.NONE;
     }
 
     /** A both-way channel that handed energy out this tick or the last takes none in: one way at a time. */

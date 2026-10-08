@@ -24,7 +24,7 @@ public final class PortInfo {
     public int[] at;
 
     public boolean isWorking() {
-        return status == PortStatus.OK && role != PortRole.NONE;
+        return status.works() && role != PortRole.NONE;
     }
 
     /** Voltage shown for this face: what it feeds, or what it receives; 0 for RF and sinks that take any voltage. */
