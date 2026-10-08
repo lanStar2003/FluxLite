@@ -142,8 +142,7 @@ public final class ChunkLoadManager implements ForgeChunkManager.LoadingCallback
 
     private static boolean wantsLoading(ConnectorRecord r) {
         if (r.owner == null) return false;
-        for (PortInfo p : r.ports)
-            if (p.status == com.fluxlite.core.PortStatus.OK && p.role != com.fluxlite.core.PortRole.NONE) return true;
+        for (PortInfo p : r.ports) if (p.status.works() && p.role != com.fluxlite.core.PortRole.NONE) return true;
         return false;
     }
 

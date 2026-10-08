@@ -54,6 +54,7 @@ fluxlite.status.disabled=Off
 fluxlite.status.no_target=Not connected
 fluxlite.status.unknown_spec=Unknown spec
 fluxlite.status.connector_neighbour=Connector
+fluxlite.status.pending=Awaiting adaptation
 
 fluxlite.alert.low_balance=Wireless balance %s is below %s
 fluxlite.alert.eta_short=At the current drain the balance runs out in about %s
