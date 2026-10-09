@@ -1,5 +1,7 @@
 # 简易通量 FluxLite
 
+> **FluxLite 已并入 [FluxEcho](https://github.com/lanStar2003/FluxEcho)（0.8.0 起）。** 这个仓库不再更新。升级时先备份存档，删掉 `fluxlite-*.jar`，换成 [FluxEcho 的最新版](https://github.com/lanStar2003/FluxEcho/releases/latest)；旧存档原样能用，不用任何转换。说明见 [docs/FluxLite.md](https://github.com/lanStar2003/FluxEcho/blob/main/docs/FluxLite.md)。
+
 [![Build](https://github.com/lanStar2003/FluxLite/actions/workflows/build.yml/badge.svg)](https://github.com/lanStar2003/FluxLite/actions/workflows/build.yml)
 [![Release](https://img.shields.io/github/v/release/lanStar2003/FluxLite)](https://github.com/lanStar2003/FluxLite/releases/latest)
 
